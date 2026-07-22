@@ -4,8 +4,7 @@ import logging
 import zipfile
 from typing import List, Dict, Any, AsyncGenerator, Tuple, Optional
 from pptx import Presentation
-from pptx.enum.shapes import MSO_SHAPE_TYPE
-from pptx.enum.placeholder import PP_PLACEHOLDER
+from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 
 from app.config import settings
 from app.ingestion.parsers.base import BaseDocumentParser, IngestedDocument

@@ -5,7 +5,8 @@ from typing import List, Dict, Any
 from app.ingestion.parsers.base import BaseDocumentParser, IngestedDocument
 from app.services.ocr_service import TesseractOcrService
 from app.services.vision_service import VisionService
-from app.ingestion.image_classifier import ImageUtilities, VisionCaptionQuality
+from app.ingestion.image_classifier import VisionCaptionQuality
+from app.ingestion.image_utils import ImageUtilities
 
 logger = logging.getLogger(__name__)
 

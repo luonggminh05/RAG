@@ -168,12 +168,27 @@ class IngestionService:
                     embeddings=embeddings
                 )
 
-            # Mark Completed
+            # Mark Completed in IngestionFiles and RagDocuments
             self.repository.mark_ingestion_completed(relative_path, total_chunks)
+            
+            doc_id = custom_metadata.get("backend_document_id") if custom_metadata else None
+            if doc_id:
+                try:
+                    self.repository.update_rag_document_status(int(doc_id), "Completed", total_chunks)
+                except Exception as db_ex:
+                    logger.error(f"Failed to update RagDocuments status for doc ID {doc_id}: {db_ex}")
+
             logger.info(f"Ingestion completed for file: {file_name} ({total_chunks} chunks)")
             return True, total_chunks
 
         except Exception as ex:
             logger.error(f"Ingestion failed for file '{file_name}': {ex}", exc_info=True)
             self.repository.mark_ingestion_failed(relative_path, str(ex))
+            
+            doc_id = custom_metadata.get("backend_document_id") if custom_metadata else None
+            if doc_id:
+                try:
+                    self.repository.update_rag_document_status(int(doc_id), "Failed", 0, str(ex))
+                except Exception as db_ex:
+                    logger.error(f"Failed to update RagDocuments error status for doc ID {doc_id}: {db_ex}")
             return False, 0

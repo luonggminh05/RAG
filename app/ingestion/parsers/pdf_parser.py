@@ -1,4 +1,5 @@
 import fitz  # PyMuPDF
+import logging
 from typing import List, Optional, Dict, Any
 from app.ingestion.parsers.base import BaseDocumentParser
 from app.ingestion.text_splitter import IngestedDocument
@@ -6,6 +7,8 @@ from app.ingestion.text_cleaner import TextArtifactCleaner
 from app.ingestion.procedure_extractor import ProcedureBlockExtractor
 from app.services.ocr_service import TesseractOcrService
 from app.services.action_classifier import ActionKindClassifier
+
+logger = logging.getLogger(__name__)
 
 class PdfParser(BaseDocumentParser):
     def __init__(self, ocr_service: TesseractOcrService):
@@ -21,22 +24,27 @@ class PdfParser(BaseDocumentParser):
         doc = fitz.open(file_path)
         
         try:
+            logger.info(f"Starting PDF parse for '{file_name}' ({len(doc)} pages)...")
             for page_num in range(len(doc)):
                 page = doc[page_num]
                 page_index = page_num + 1  # 1-based page number
+                logger.info(f"Parsing PDF '{file_name}' page {page_index}/{len(doc)}...")
 
                 text = page.get_text("text")
 
                 # Heuristic for scanned pages: check if there's minimal text
                 words = page.get_text("words")
                 if len(words) < 10 or not text.strip():
+                    logger.info(f"PDF page {page_index} is scanned (words: {len(words)}). Running OCR...")
                     # Run OCR on scanned PDF pages
                     pix = page.get_pixmap(dpi=150)
                     image_bytes = pix.tobytes("png")
                     ocr_text = await self.ocr_service.extract_text(image_bytes)
                     if ocr_text and ocr_text.strip():
                         text = ocr_text
+                        logger.info(f"OCR completed successfully for page {page_index}.")
                     else:
+                        logger.warning(f"No text extracted via OCR for page {page_index}.")
                         continue
 
 

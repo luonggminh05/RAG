@@ -57,3 +57,24 @@ class ChatRequest(BaseModel):
     model_config = {
         "populate_by_name": True
     }
+
+class CreateDocumentMetadataRequest(BaseModel):
+    document_name: str
+    file_name: str
+    file_path: str
+    file_size: int
+    category: Optional[str] = None
+    owner_department: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[str] = None
+    access_scope: str = "Public"
+    effective_date: Optional[str] = None
+    expiration_date: Optional[str] = None
+    uploaded_by: Optional[str] = None
+    tenant_id: Optional[int] = None
+    allowed_roles: List[str] = Field(default_factory=list)
+
+class UpdateDocumentStatusRequest(BaseModel):
+    status: str
+    chunk_count: int
+    error: Optional[str] = None

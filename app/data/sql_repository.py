@@ -9,7 +9,25 @@ logger = logging.getLogger(__name__)
 
 class SqlDocumentRepository:
     def __init__(self):
-        self.connection_string = settings.sql_connection_string
+        conn_str = settings.sql_connection_string
+        # Normalize connection string boolean values for pyodbc/unixODBC compatibility
+        if conn_str:
+            import re
+            conn_str = re.sub(r'(?i)\bTrustServerCertificate\s*=\s*True\b', 'TrustServerCertificate=yes', conn_str)
+            conn_str = re.sub(r'(?i)\bTrustServerCertificate\s*=\s*False\b', 'TrustServerCertificate=no', conn_str)
+            conn_str = re.sub(r'(?i)\bEncrypt\s*=\s*True\b', 'Encrypt=yes', conn_str)
+            conn_str = re.sub(r'(?i)\bEncrypt\s*=\s*False\b', 'Encrypt=no', conn_str)
+            conn_str = re.sub(r'(?i)\bUser\s+Id\b', 'UID', conn_str)
+            conn_str = re.sub(r'(?i)\bPassword\b', 'PWD', conn_str)
+
+        # Auto-inject ODBC Driver for Linux environment if not specified in connection string
+        if conn_str and "driver=" not in conn_str.lower():
+            driver = "ODBC Driver 18 for SQL Server"
+            if not conn_str.rstrip().endswith(";"):
+                conn_str += ";"
+            conn_str = f"Driver={{{driver}}};{conn_str}"
+            logger.info(f"Auto-injected default database driver: {driver}")
+        self.connection_string = conn_str
 
     def _get_connection(self):
         # pyodbc connection
@@ -45,7 +63,7 @@ class SqlDocumentRepository:
                             conn.commit()
                             logger.info("Created Documents table.")
 
-                        # Check if IngestionFiles table exists
+                         # Check if IngestionFiles table exists
                         cursor.execute("SELECT 1 FROM sysobjects WHERE name='IngestionFiles' AND xtype='U'")
                         if not cursor.fetchone():
                             cursor.execute("""
@@ -64,6 +82,49 @@ class SqlDocumentRepository:
                             conn.commit()
                             logger.info("Created IngestionFiles table.")
 
+                        # Check if RagDocuments table exists
+                        cursor.execute("SELECT 1 FROM sysobjects WHERE name='RagDocuments' AND xtype='U'")
+                        if not cursor.fetchone():
+                            cursor.execute("""
+                                CREATE TABLE RagDocuments (
+                                    Id                  INT IDENTITY(1,1) CONSTRAINT PK_RagDocuments PRIMARY KEY,
+                                    DocumentName        NVARCHAR(500) NOT NULL,
+                                    FileName            NVARCHAR(500) NOT NULL,
+                                    FilePath            NVARCHAR(1000) NOT NULL,
+                                    FileSize            BIGINT NOT NULL,
+                                    Category            NVARCHAR(200) NULL,
+                                    OwnerDepartment     NVARCHAR(200) NULL,
+                                    Description         NVARCHAR(MAX) NULL,
+                                    Tags                NVARCHAR(MAX) NULL, -- JSON array of strings
+                                    AccessScope         NVARCHAR(50) NOT NULL CONSTRAINT DF_RagDocuments_AccessScope DEFAULT 'Public',
+                                    EffectiveDate       DATETIME2 NULL,
+                                    ExpirationDate      DATETIME2 NULL,
+                                    IngestStatus        NVARCHAR(50) NOT NULL CONSTRAINT DF_RagDocuments_IngestStatus DEFAULT 'Pending',
+                                    IngestError         NVARCHAR(MAX) NULL,
+                                    ChunkCount          INT NOT NULL CONSTRAINT DF_RagDocuments_ChunkCount DEFAULT 0,
+                                    UploadedBy          NVARCHAR(100) NULL,
+                                    TenantId            INT NULL,
+                                    CreationTime        DATETIME2 NOT NULL CONSTRAINT DF_RagDocuments_CreationTime DEFAULT GETUTCDATE(),
+                                    LastModificationTime DATETIME2 NULL
+                                );
+                            """)
+                            conn.commit()
+                            logger.info("Created RagDocuments table.")
+
+                        # Check if RagDocumentRoles table exists
+                        cursor.execute("SELECT 1 FROM sysobjects WHERE name='RagDocumentRoles' AND xtype='U'")
+                        if not cursor.fetchone():
+                            cursor.execute("""
+                                CREATE TABLE RagDocumentRoles (
+                                    Id              INT IDENTITY(1,1) CONSTRAINT PK_RagDocumentRoles PRIMARY KEY,
+                                    RagDocumentId   INT NOT NULL CONSTRAINT FK_RagDocumentRoles_RagDocuments REFERENCES RagDocuments(Id) ON DELETE CASCADE,
+                                    RoleName        NVARCHAR(200) NOT NULL
+                                );
+                                CREATE INDEX IX_RagDocumentRoles_RagDocumentId ON RagDocumentRoles(RagDocumentId);
+                            """)
+                            conn.commit()
+                            logger.info("Created RagDocumentRoles table.")
+
                         # Ensure Full-Text index
                         self._ensure_full_text(cursor, conn)
                         # Ensure Vector index
@@ -80,7 +141,11 @@ class SqlDocumentRepository:
 
     def _ensure_database(self):
         # Ensure target database exists by connecting to master
-        params = dict(tok.split("=") for tok in self.connection_string.split(";") if tok and "=" in tok)
+        params = {}
+        for tok in self.connection_string.split(";"):
+            if tok and "=" in tok:
+                k, _, v = tok.partition("=")
+                params[k.strip()] = v.strip()
         database_name = params.get("Database") or params.get("database") or params.get("Initial Catalog") or params.get("initial catalog")
         
         if not database_name or database_name.lower() in ["master", "tempdb", "model", "msdb"]:
@@ -203,7 +268,6 @@ class SqlDocumentRepository:
                     rows.append((doc_id, documents[idx], meta_str, emb_str))
 
                 # 2. Insert into temp table
-                cursor.fast_executemany = True
                 cursor.executemany("""
                     INSERT INTO #DocumentUpsert (id, document, metadata, embedding_json)
                     VALUES (?, ?, ?, ?);
@@ -608,3 +672,158 @@ class SqlDocumentRepository:
                     WHERE relative_path = ?;
                 """, (now, error_msg, norm_path))
                 conn.commit()
+
+    # === RagDocuments CRUD Helpers ===
+    def create_rag_document(
+        self,
+        document_name: str,
+        file_name: str,
+        file_path: str,
+        file_size: int,
+        category: Optional[str],
+        owner_department: Optional[str],
+        description: Optional[str],
+        tags: Optional[str],
+        access_scope: str,
+        effective_date: Optional[str],
+        expiration_date: Optional[str],
+        uploaded_by: Optional[str],
+        tenant_id: Optional[int],
+        allowed_roles: List[str]
+    ) -> int:
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                # 1. Insert metadata
+                cursor.execute("""
+                    INSERT INTO RagDocuments (DocumentName, FileName, FilePath, FileSize, Category, OwnerDepartment, Description, Tags, AccessScope, EffectiveDate, ExpirationDate, IngestStatus, UploadedBy, TenantId)
+                    OUTPUT INSERTED.Id
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Processing', ?, ?);
+                """, (
+                    document_name, file_name, file_path, file_size, category, owner_department, description, tags, access_scope,
+                    effective_date, expiration_date, uploaded_by, tenant_id
+                ))
+                doc_id = int(cursor.fetchone()[0])
+                
+                # 2. Insert roles if Restricted
+                if access_scope == "Restricted" and allowed_roles:
+                    for role in allowed_roles:
+                        cursor.execute("""
+                            INSERT INTO RagDocumentRoles (RagDocumentId, RoleName)
+                            VALUES (?, ?);
+                        """, (doc_id, role))
+                
+                conn.commit()
+                return doc_id
+
+    def get_rag_document(self, doc_id: int) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT Id, DocumentName, FileName, FilePath, FileSize, Category, OwnerDepartment, Description, Tags, AccessScope, EffectiveDate, ExpirationDate, IngestStatus, IngestError, ChunkCount, UploadedBy, TenantId, CreationTime
+                    FROM RagDocuments WHERE Id = ?;
+                """, (doc_id,))
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        "id": row[0],
+                        "document_name": row[1],
+                        "file_name": row[2],
+                        "file_path": row[3],
+                        "file_size": row[4],
+                        "category": row[5],
+                        "owner_department": row[6],
+                        "description": row[7],
+                        "tags": row[8],
+                        "access_scope": row[9],
+                        "effective_date": row[10].isoformat() if row[10] else None,
+                        "expiration_date": row[11].isoformat() if row[11] else None,
+                        "ingest_status": row[12],
+                        "ingest_error": row[13],
+                        "chunk_count": row[14],
+                        "uploaded_by": row[15],
+                        "tenant_id": row[16],
+                        "creation_time": row[17].isoformat() if row[17] else None
+                    }
+        return None
+
+    def get_rag_documents_list(self) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT Id, DocumentName, FileName, FilePath, FileSize, Category, OwnerDepartment, Description, Tags, AccessScope, EffectiveDate, ExpirationDate, IngestStatus, IngestError, ChunkCount, UploadedBy, TenantId, CreationTime
+                    FROM RagDocuments ORDER BY CreationTime DESC;
+                """)
+                results = []
+                for row in cursor.fetchall():
+                    results.append({
+                        "id": row[0],
+                        "document_name": row[1],
+                        "file_name": row[2],
+                        "file_path": row[3],
+                        "file_size": row[4],
+                        "category": row[5],
+                        "owner_department": row[6],
+                        "description": row[7],
+                        "tags": row[8],
+                        "access_scope": row[9],
+                        "effective_date": row[10].isoformat() if row[10] else None,
+                        "expiration_date": row[11].isoformat() if row[11] else None,
+                        "ingest_status": row[12],
+                        "ingest_error": row[13],
+                        "chunk_count": row[14],
+                        "uploaded_by": row[15],
+                        "tenant_id": row[16],
+                        "creation_time": row[17].isoformat() if row[17] else None
+                    })
+                return results
+
+    def get_rag_document_roles(self, doc_id: int) -> List[str]:
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT RoleName FROM RagDocumentRoles WHERE RagDocumentId = ?;", (doc_id,))
+                return [row[0] for row in cursor.fetchall()]
+
+    def update_rag_document_status(self, doc_id: int, status: str, chunk_count: int, error: Optional[str] = None):
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE RagDocuments
+                    SET IngestStatus = ?, ChunkCount = ?, IngestError = ?, LastModificationTime = GETUTCDATE()
+                    WHERE Id = ?;
+                """, (status, chunk_count, error, doc_id))
+                conn.commit()
+
+    def delete_rag_document(self, doc_id: int) -> Optional[str]:
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                # 1. Fetch file_path first before deleting
+                cursor.execute("SELECT FilePath FROM RagDocuments WHERE Id = ?;", (doc_id,))
+                row = cursor.fetchone()
+                file_path = row[0] if row else None
+                
+                if file_path:
+                    # 2. Get relative_path from Documents before deleting
+                    cursor.execute("""
+                        SELECT DISTINCT JSON_VALUE(metadata, '$.relative_path')
+                        FROM Documents
+                        WHERE JSON_VALUE(metadata, '$.backend_document_id') = ?
+                           OR JSON_VALUE(metadata, '$.documentId') = ?;
+                    """, (str(doc_id), str(doc_id)))
+                    paths = [r[0] for r in cursor.fetchall() if r[0]]
+
+                    # 3. Delete from IngestionFiles
+                    if paths:
+                        for path in paths:
+                            cursor.execute("DELETE FROM IngestionFiles WHERE relative_path = ?;", (path,))
+
+                    # 4. Delete metadata (cascade delete will purge RagDocumentRoles)
+                    cursor.execute("DELETE FROM RagDocuments WHERE Id = ?;", (doc_id,))
+
+                    # 5. Delete related vector chunks in Documents table
+                    cursor.execute("""
+                        DELETE FROM Documents
+                        WHERE JSON_VALUE(metadata, '$.backend_document_id') = ?
+                           OR JSON_VALUE(metadata, '$.documentId') = ?;
+                    """, (str(doc_id), str(doc_id)))
+                    conn.commit()
+                return file_path
