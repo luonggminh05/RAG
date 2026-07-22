@@ -13,6 +13,99 @@ class IngestedDocument:
             "metadata": self.metadata
         }
 
+class SemanticChunker:
+    """
+    Token-aware Semantic Chunker that groups paragraphs and headings
+    into cohesive chunks between min_tokens and max_tokens (e.g. 300-500 tokens).
+    """
+
+    @staticmethod
+    def _count_tokens(text: str) -> int:
+        try:
+            import tiktoken
+            encoding = tiktoken.get_encoding("cl100k_base")
+            return len(encoding.encode(text))
+        except ImportError:
+            # Fallback estimation: average 1.3 tokens per word for Vietnamese/English mix
+            words = len(text.split())
+            return int(words * 1.3)
+
+    @classmethod
+    def split_documents(
+        cls,
+        documents: List[IngestedDocument],
+        min_tokens: int = 300,
+        max_tokens: int = 500,
+        overlap_tokens: int = 75
+    ) -> List[IngestedDocument]:
+        result = []
+
+        for doc in documents:
+            text = doc.page_content
+            if not text or not text.strip():
+                continue
+
+            total_tokens = cls._count_tokens(text)
+            if total_tokens <= max_tokens:
+                result.append(doc)
+                continue
+
+            # Split into structural blocks (paragraphs / headings)
+            blocks = [b.strip() for b in text.split('\n\n') if b.strip()]
+            if not blocks:
+                blocks = [b.strip() for b in text.split('\n') if b.strip()]
+
+            current_chunk_blocks = []
+            current_chunk_tokens = 0
+
+            for block in blocks:
+                block_tokens = cls._count_tokens(block)
+
+                # If single block exceeds max_tokens, split it by character/words fallback
+                if block_tokens > max_tokens:
+                    if current_chunk_blocks:
+                        chunk_text = "\n\n".join(current_chunk_blocks).strip()
+                        if chunk_text:
+                            result.append(IngestedDocument(page_content=chunk_text, metadata=dict(doc.metadata)))
+                        current_chunk_blocks = []
+                        current_chunk_tokens = 0
+
+                    # Character fallback for enormous single block
+                    sub_docs = TextSplitter.split_documents([IngestedDocument(block, dict(doc.metadata))], max_tokens * 4, overlap_tokens * 4)
+                    result.extend(sub_docs)
+                    continue
+
+                if current_chunk_tokens + block_tokens > max_tokens and current_chunk_tokens >= min_tokens:
+                    # Emit current chunk
+                    chunk_text = "\n\n".join(current_chunk_blocks).strip()
+                    if chunk_text:
+                        result.append(IngestedDocument(page_content=chunk_text, metadata=dict(doc.metadata)))
+                    
+                    # Prepare overlap blocks
+                    overlap_blocks = []
+                    overlap_count = 0
+                    for b in reversed(current_chunk_blocks):
+                        b_tok = cls._count_tokens(b)
+                        if overlap_count + b_tok <= overlap_tokens:
+                            overlap_blocks.insert(0, b)
+                            overlap_count += b_tok
+                        else:
+                            break
+                    
+                    current_chunk_blocks = overlap_blocks + [block]
+                    current_chunk_tokens = overlap_count + block_tokens
+                else:
+                    current_chunk_blocks.append(block)
+                    current_chunk_tokens += block_tokens
+
+            # Emit remaining block chunk
+            if current_chunk_blocks:
+                chunk_text = "\n\n".join(current_chunk_blocks).strip()
+                if chunk_text:
+                    result.append(IngestedDocument(page_content=chunk_text, metadata=dict(doc.metadata)))
+
+        return result
+
 class TextSplitter:
     @staticmethod
     def split_documents(documents: List[IngestedDocument], chunk_size: int, chunk_overlap: int) -> List[IngestedDocument]:

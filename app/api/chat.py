@@ -28,7 +28,7 @@ async def chat_stream(
     vision_service: VisionService = Depends(get_vision_service)
 ):
     chat_engine = ChatEngine(repository, embedding_service)
-    connection_id = "http-session"
+    connection_id = request.conversation_id or "http-session"
 
     async def sse_generator():
         try:
@@ -156,14 +156,14 @@ async def chat_stream(
             # Fetch related chunks
             if related_kind and metadatas:
                 limit = max(1, min(settings.search_chat_top_k, 10))
-                related_chunks = repository.get_related_chunks(metadatas, related_kind, limit)
+                related_chunks = repository.get_related_chunks(metadatas, related_kind, limit, user_roles=roles)
                 chat_engine.append_related_chunks(documents, metadatas, related_chunks)
 
             # Fetch procedure chunks if task instruction matches action
             query_action = ActionKindClassifier.determine_action_kind(classification_query)
             is_step_action = query_action and query_intent == QueryIntent.TaskInstruction
             if is_step_action and metadatas:
-                procedure_chunks = repository.get_procedure_chunks_by_action(metadatas, query_action, 12)
+                procedure_chunks = repository.get_procedure_chunks_by_action(metadatas, query_action, 12, user_roles=roles)
                 chat_engine.append_related_chunks(documents, metadatas, procedure_chunks)
 
             # Re-order chunks if action matches

@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # Ingestion settings
     ingestion_chunk_size: int = Field(default=600, alias="INGESTION_CHUNKSIZE")
     ingestion_chunk_overlap: int = Field(default=100, alias="INGESTION_CHUNKOVERLAP")
+    ingestion_chunk_tokens_min: int = Field(default=300, alias="INGESTION_CHUNKTOKENS_MIN")
+    ingestion_chunk_tokens_max: int = Field(default=500, alias="INGESTION_CHUNKTOKENS_MAX")
+    ingestion_chunk_overlap_tokens: int = Field(default=75, alias="INGESTION_CHUNKOVERLAP_TOKENS")
     ingestion_batch_size: int = Field(default=32, alias="INGESTION_BATCHSIZE")
     ingestion_papers_dir: str = Field(default="papers", alias="INGESTION_PAPERSDIRECTORY")
     ingestion_enable_ocr: bool = Field(default=True, alias="INGESTION_ENABLEOCR")
@@ -32,10 +35,15 @@ class Settings(BaseSettings):
     ingestion_tessdata_path: str = Field(default="tessdata", alias="INGESTION_TESSDATAPATH")
     ingestion_min_vision_image_width: int = Field(default=100, alias="INGESTION_MINVISIONIMAGEWIDTH")
     ingestion_min_vision_image_height: int = Field(default=100, alias="INGESTION_MINVISIONIMAGEHEIGHT")
+    ingestion_vision_large_image_min_side: int = Field(default=1200, alias="INGESTION_VISION_LARGE_IMAGE_MIN_SIDE")
+    ingestion_vision_large_image_min_pixels: int = Field(default=1000000, alias="INGESTION_VISION_LARGE_IMAGE_MIN_PIXELS")
     ingestion_max_vision_images_per_slide: int = Field(default=0, alias="INGESTION_MAXVISIONIMAGESPERSLIDE")
     ingestion_max_vision_images_per_file: int = Field(default=0, alias="INGESTION_MAXVISIONIMAGESPERFILE")
     ingestion_vision_timeout_seconds: int = Field(default=160, alias="INGESTION_VISIONTIMEOUTSECONDS")
     frontend_cors_origins: list[str] = Field(default=["http://localhost:4200"], alias="FRONTEND_CORS_ORIGINS")
+    
+    # Embedding settings
+    embedding_dims: int = Field(default=1024, alias="EMBEDDING_DIMS")
     
     # Search settings
     search_top_k_max: int = Field(default=50, alias="SEARCH_TOPKMAX")

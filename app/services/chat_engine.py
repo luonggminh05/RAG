@@ -9,9 +9,12 @@ from app.services.tei_embedding import TeiEmbeddingService
 from app.services.query_classifier import QueryClassifier, QueryIntent
 from app.services.action_classifier import ActionKindClassifier
 from app.services.citation_helper import CitationHelper
-from app.ingestion.text_cleaner import TextArtifactCleaner
+from cachetools import TTLCache
 
 logger = logging.getLogger(__name__)
+
+# Shared module-level TTLCache persistent across HTTP requests (max 10,000 conversations, 1-hour TTL)
+_GLOBAL_CHAT_MEMORY: TTLCache = TTLCache(maxsize=10000, ttl=3600)
 
 class ChatEngine:
     def __init__(self, repository: SqlDocumentRepository, embedding_service: TeiEmbeddingService):
@@ -22,8 +25,8 @@ class ChatEngine:
             base_url=settings.llm_endpoint,
             api_key=settings.llm_api_key
         )
-        # In-memory chat memory (similar to ChatHub _chatMemory)
-        self._chat_memory: Dict[str, str] = {}
+        # Shared in-memory chat memory (similar to ChatHub _chatMemory)
+        self._chat_memory: Dict[str, str] = _GLOBAL_CHAT_MEMORY
 
     def get_last_lookup_key(self, connection_id: str) -> str:
         return f"chat:last-lookup:{connection_id}"

@@ -2,9 +2,10 @@ import datetime
 import hashlib
 import logging
 import os
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from app.config import settings
-from app.ingestion.text_splitter import TextSplitter, IngestedDocument
+from app.ingestion.normalizer import VietnameseNormalizer
+from app.ingestion.text_splitter import TextSplitter, SemanticChunker, IngestedDocument
 from app.ingestion.parsers.base import DocumentParser
 from app.services.tei_embedding import TeiEmbeddingService
 from app.data.sql_repository import SqlDocumentRepository
@@ -33,7 +34,7 @@ class IngestionService:
         file_path: str,
         file_name: str,
         custom_metadata: Optional[Dict[str, Any]] = None
-    ) -> bool:
+    ) -> Tuple[bool, int]:
         # Check file details
         if not os.path.exists(file_path):
             logger.error(f"Ingest failed: file path does not exist '{file_path}'")
@@ -70,9 +71,6 @@ class IngestionService:
 
         is_tabular = ext in [".xlsx", ".csv"]
 
-        global_chunk_index = 0
-        doc_count = 0
-
         try:
             # Mark Ingestion Processing
             self.repository.mark_ingestion_started(
@@ -85,81 +83,95 @@ class IngestionService:
             # Delete any previous chunks
             self.repository.delete_documents_for_file(relative_path)
 
-            # Parse the stream of pages/paragraphs
+            # 1. Parse and Normalize all documents from stream
+            parsed_docs: List[IngestedDocument] = []
             async for doc in parser.parse_stream_async(file_path, file_name):
-                doc_count += 1
-                
-                # Split text
-                if self._should_bypass_splitter(doc.metadata, is_tabular):
-                    chunks = [doc]
-                else:
-                    chunks = TextSplitter.split_documents(
-                        [doc],
-                        settings.ingestion_chunk_size,
-                        settings.ingestion_chunk_overlap
-                    )
+                # Apply Vietnamese Normalization
+                doc.page_content = VietnameseNormalizer.normalize(doc.page_content)
+                if doc.page_content.strip():
+                    parsed_docs.append(doc)
 
-                if not chunks:
-                    continue
-
-                # Batch embed and insert
-                batch_size = settings.ingestion_batch_size
-                for offset in range(0, len(chunks), batch_size):
-                    batch = chunks[offset:offset + batch_size]
-                    texts = [c.page_content for c in batch]
-
-                    # Embed
-                    embeddings = await self.embedding_service.embed_texts(texts)
-
-                    ids = []
-                    metadatas = []
-
-                    for idx, chunk in enumerate(batch):
-                        chunk_id = TextSplitter.generate_chunk_id(
-                            relative_path=relative_path,
-                            last_write_time_utc=last_write_time_utc,
-                            length=file_length,
-                            index=global_chunk_index
-                        )
-                        
-                        # Populate system metadata
-                        chunk.metadata["relative_path"] = relative_path
-                        chunk.metadata["chunk_index"] = global_chunk_index
-
-                        # Populate custom metadata from form-data if provided
-                        if custom_metadata:
-                            chunk.metadata["documentName"] = custom_metadata.get("documentName", "")
-                            chunk.metadata["category"] = custom_metadata.get("category", "")
-                            chunk.metadata["ownerDepartment"] = custom_metadata.get("ownerDepartment", "")
-                            chunk.metadata["description"] = custom_metadata.get("description", "")
-                            chunk.metadata["tags"] = custom_metadata.get("tags", [])
-                            chunk.metadata["effectiveDate"] = custom_metadata.get("effectiveDate")
-                            chunk.metadata["expirationDate"] = custom_metadata.get("expirationDate")
-                            chunk.metadata["accessScope"] = custom_metadata.get("accessScope", "Public")
-                            chunk.metadata["allowedRoles"] = custom_metadata.get("allowedRoles", [])
-                            if "backend_document_id" in custom_metadata:
-                                chunk.metadata["backend_document_id"] = custom_metadata["backend_document_id"]
-                            if "storage_key" in custom_metadata:
-                                chunk.metadata["storage_key"] = custom_metadata["storage_key"]
-
-                        ids.append(chunk_id)
-                        metadatas.append(chunk.metadata)
-                        global_chunk_index += 1
-
-                    self.repository.upsert_documents(
-                        ids=ids,
-                        documents=texts,
-                        metadatas=metadatas,
-                        embeddings=embeddings
-                    )
-
-            if doc_count == 0:
+            if not parsed_docs:
                 logger.warning(f"No content extracted from file: {file_name}")
 
+            # 2. Chunk documents using SemanticChunker or bypass logic
+            all_chunks: List[IngestedDocument] = []
+            for doc in parsed_docs:
+                if self._should_bypass_splitter(doc.metadata, is_tabular):
+                    all_chunks.append(doc)
+                else:
+                    chunks = SemanticChunker.split_documents(
+                        [doc],
+                        min_tokens=settings.ingestion_chunk_tokens_min,
+                        max_tokens=settings.ingestion_chunk_tokens_max,
+                        overlap_tokens=settings.ingestion_chunk_overlap_tokens
+                    )
+                    all_chunks.extend(chunks)
+
+            total_chunks = len(all_chunks)
+
+            # 3. Batch Embed and Upsert with Flat Metadata Schema
+            batch_size = settings.ingestion_batch_size
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+            for global_chunk_index in range(0, total_chunks, batch_size):
+                batch = all_chunks[global_chunk_index:global_chunk_index + batch_size]
+                texts = [c.page_content for c in batch]
+
+                embeddings = await self.embedding_service.embed_texts(texts)
+
+                ids = []
+                metadatas = []
+
+                for idx_in_batch, chunk in enumerate(batch):
+                    chunk_idx = global_chunk_index + idx_in_batch
+                    chunk_id = TextSplitter.generate_chunk_id(
+                        relative_path=relative_path,
+                        last_write_time_utc=last_write_time_utc,
+                        length=file_length,
+                        index=chunk_idx
+                    )
+                    
+                    # Flat Metadata Schema
+                    chunk.metadata["relative_path"] = relative_path
+                    chunk.metadata["chunkIndex"] = chunk_idx
+                    chunk.metadata["totalChunks"] = total_chunks
+                    chunk.metadata["source"] = file_name
+                    chunk.metadata["sourceFile"] = file_name
+                    chunk.metadata["version"] = 1
+                    chunk.metadata["uploadedAt"] = custom_metadata.get("creationTime", now_iso) if custom_metadata else now_iso
+
+                    if custom_metadata:
+                        chunk.metadata["documentId"] = custom_metadata.get("backend_document_id")
+                        chunk.metadata["backend_document_id"] = custom_metadata.get("backend_document_id")
+                        chunk.metadata["title"] = custom_metadata.get("documentName", file_name)
+                        chunk.metadata["documentName"] = custom_metadata.get("documentName", file_name)
+                        chunk.metadata["category"] = custom_metadata.get("category", "")
+                        chunk.metadata["ownerDepartment"] = custom_metadata.get("ownerDepartment", "")
+                        chunk.metadata["description"] = custom_metadata.get("description", "")
+                        chunk.metadata["tags"] = custom_metadata.get("tags", [])
+                        chunk.metadata["effectiveDate"] = custom_metadata.get("effectiveDate")
+                        chunk.metadata["expirationDate"] = custom_metadata.get("expirationDate")
+                        chunk.metadata["accessScope"] = custom_metadata.get("accessScope", "Public")
+                        chunk.metadata["allowedRoles"] = custom_metadata.get("allowedRoles", [])
+                        chunk.metadata["uploadedBy"] = custom_metadata.get("uploadedBy", "")
+                        if "storage_key" in custom_metadata:
+                            chunk.metadata["storage_key"] = custom_metadata["storage_key"]
+
+                    ids.append(chunk_id)
+                    metadatas.append(chunk.metadata)
+
+                self.repository.upsert_documents(
+                    ids=ids,
+                    documents=texts,
+                    metadatas=metadatas,
+                    embeddings=embeddings
+                )
+
             # Mark Completed
-            self.repository.mark_ingestion_completed(relative_path, global_chunk_index)
-            logger.info(f"Ingestion completed for file: {file_name} ({global_chunk_index} chunks)")
-            return True, global_chunk_index
+            self.repository.mark_ingestion_completed(relative_path, total_chunks)
+            logger.info(f"Ingestion completed for file: {file_name} ({total_chunks} chunks)")
+            return True, total_chunks
 
         except Exception as ex:
             logger.error(f"Ingestion failed for file '{file_name}': {ex}", exc_info=True)

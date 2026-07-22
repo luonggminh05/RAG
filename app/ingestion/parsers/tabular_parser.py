@@ -37,8 +37,7 @@ class TabularParser(BaseDocumentParser):
                             row_data = []
                             for col_idx, val in enumerate(row, start=1):
                                 if val is not None and col_idx in headers:
-                                    row_data.append(f"{headers[col_idx]}: {str(val).strip()}") # Wait, row_data.append in Python! Let's check!
-                                    # Yes, row_data.append(f"{headers[col_idx]}: {str(val).strip()}")
+                                    row_data.append(f"{headers[col_idx]}: {str(val).strip()}")
                             if row_data:
                                 page_content = ", ".join(row_data)
                                 docs.append(IngestedDocument(

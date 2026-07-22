@@ -19,8 +19,6 @@ class AddDocumentsResponse(BaseModel):
 class SearchRequest(BaseModel):
     query: str
     top_k: int = Field(default=5, alias="top_k")
-    # Wait, the frontend might serialize it with camelCase or snake_case.
-    # In C#, it was camelCase or jsonProperty "top_k". Let's support both using population_by_field_name or alias.
     content_kind: Optional[str] = Field(default=None, alias="content_kind")
     user_roles: Optional[str] = Field(default=None, alias="user_roles")
 
@@ -54,6 +52,7 @@ class ChatRequest(BaseModel):
     message: str = ""
     images: List[ChatImageInput] = Field(default_factory=list)
     user_roles: Optional[str] = Field(default=None, alias="user_roles")
+    conversation_id: Optional[str] = Field(default=None, alias="conversation_id")
 
     model_config = {
         "populate_by_name": True

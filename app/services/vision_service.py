@@ -34,8 +34,20 @@ class VisionService:
             return None
 
         width, height = dims
+        max_side = max(width, height)
+        total_pixels = width * height
+
         if width < settings.ingestion_min_vision_image_width or height < settings.ingestion_min_vision_image_height:
-            logger.debug(f"Vision skipped small image from {metadata.get('source')}: {width}x{height}px.")
+            logger.debug(f"Vision skipped small icon/image from {metadata.get('source')}: {width}x{height}px.")
+            return None
+
+        # Hybrid Image Router check:
+        # Large complex images or UI screenshots trigger VLM captioning, moderate images rely on OCR text
+        is_large_image = (max_side >= settings.ingestion_vision_large_image_min_side or total_pixels >= settings.ingestion_vision_large_image_min_pixels)
+        is_ui_screenshot = metadata.get("image_role") == "Screenshot" or metadata.get("content_kind") == "image_ui_description"
+
+        if not is_large_image and not is_ui_screenshot:
+            logger.debug(f"Vision skipped moderate non-UI image from {metadata.get('source')} ({width}x{height}px), relying on OCR.")
             return None
 
         # Compress image for vision to speed up transfer and reduce tokens

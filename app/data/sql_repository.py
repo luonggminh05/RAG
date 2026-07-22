@@ -173,9 +173,15 @@ class SqlDocumentRepository:
                 conn.commit()
                 logger.info(f"Deleted all vector data for backend document id '{backend_id}'")
 
-    def upsert_documents(self, ids: List[str], documents: List[str], metadatas: List[Dict[str, Any]], embeddings: List[List[float]]):
-        if not documents:
+    def upsert_documents(self, ids: List[str], documents: List[str], metadatas: List[Dict[str, Any]], embeddings: List[List[float]]) -> None:
+        if not ids or not documents or not embeddings:
             return
+
+        # Vector dimension guard check
+        expected_dims = settings.embedding_dims
+        for idx, emb in enumerate(embeddings):
+            if len(emb) != expected_dims:
+                raise ValueError(f"Vector dimension mismatch at chunk '{ids[idx]}': expected {expected_dims}, got {len(emb)}")
 
         with self._get_connection() as conn:
             with conn.cursor() as cursor:
@@ -250,10 +256,13 @@ class SqlDocumentRepository:
                       OR (
                           JSON_VALUE(metadata, '$.accessScope') = 'Restricted'
                           AND ? IS NOT NULL
-                          AND EXISTS (
-                              SELECT 1 
-                              FROM OPENJSON(metadata, '$.allowedRoles') WITH (role NVARCHAR(100) '$')
-                              WHERE role IN (SELECT value FROM STRING_SPLIT(?, ','))
+                          AND (
+                              CHARINDEX('admin', LOWER(?)) > 0
+                              OR EXISTS (
+                                  SELECT 1 
+                                  FROM OPENJSON(metadata, '$.allowedRoles') WITH (role NVARCHAR(100) '$')
+                                  WHERE role IN (SELECT value FROM STRING_SPLIT(?, ','))
+                              )
                           )
                       )
                   )
@@ -312,7 +321,7 @@ class SqlDocumentRepository:
             with conn.cursor() as cursor:
                 params = (
                     content_kind, content_kind,
-                    user_roles, user_roles,
+                    user_roles, user_roles, user_roles,
                     query_embedding_json,
                     vector_candidate_count,
                     exact_keyword, exact_keyword,
@@ -347,7 +356,7 @@ class SqlDocumentRepository:
             "citations": [citations]
         }
 
-    def get_related_chunks(self, source_metadatas: List[Dict[str, Any]], content_kind: str, limit: int) -> List[Tuple[str, Dict[str, Any]]]:
+    def get_related_chunks(self, source_metadatas: List[Dict[str, Any]], content_kind: str, limit: int, user_roles: Optional[str] = None) -> List[Tuple[str, Dict[str, Any]]]:
         if not source_metadatas or limit <= 0:
             return []
 
@@ -405,11 +414,27 @@ class SqlDocumentRepository:
             FROM Documents
             WHERE JSON_VALUE(metadata, '$.content_kind') = ?
               AND ({' OR '.join(predicates)})
+              AND (
+                  JSON_VALUE(metadata, '$.accessScope') IS NULL 
+                  OR JSON_VALUE(metadata, '$.accessScope') = 'Public'
+                  OR (
+                      JSON_VALUE(metadata, '$.accessScope') = 'Restricted'
+                      AND ? IS NOT NULL
+                      AND (
+                          CHARINDEX('admin', LOWER(?)) > 0
+                          OR EXISTS (
+                              SELECT 1 
+                              FROM OPENJSON(metadata, '$.allowedRoles') WITH (role NVARCHAR(100) '$')
+                              WHERE role IN (SELECT value FROM STRING_SPLIT(?, ','))
+                          )
+                      )
+                  )
+              )
             ORDER BY id_int ASC;
         """
 
-        # Re-arrange params: top limit first, content_kind second, then predicates params
-        query_params = [limit, content_kind] + params[2:]
+        # Re-arrange params: top limit first, content_kind second, then predicates params, then role params
+        query_params = [limit, content_kind] + params[2:] + [user_roles, user_roles, user_roles]
 
         results = []
         with self._get_connection() as conn:
@@ -421,7 +446,7 @@ class SqlDocumentRepository:
                     results.append((doc_text, meta))
         return results
 
-    def get_procedure_chunks_by_action(self, source_metadatas: List[Dict[str, Any]], action_kind: str, limit: int) -> List[Tuple[str, Dict[str, Any]]]:
+    def get_procedure_chunks_by_action(self, source_metadatas: List[Dict[str, Any]], action_kind: str, limit: int, user_roles: Optional[str] = None) -> List[Tuple[str, Dict[str, Any]]]:
         if not source_metadatas or not action_kind or limit <= 0:
             return []
 
@@ -446,12 +471,28 @@ class SqlDocumentRepository:
               AND JSON_VALUE(metadata, '$.instruction_role') = 'procedure_steps'
               AND (JSON_VALUE(metadata, '$.action_kind') = ? OR JSON_VALUE(metadata, '$.action_kind') = ?)
               AND JSON_VALUE(metadata, '$.source') IN ({placeholders})
+              AND (
+                  JSON_VALUE(metadata, '$.accessScope') IS NULL 
+                  OR JSON_VALUE(metadata, '$.accessScope') = 'Public'
+                  OR (
+                      JSON_VALUE(metadata, '$.accessScope') = 'Restricted'
+                      AND ? IS NOT NULL
+                      AND (
+                          CHARINDEX('admin', LOWER(?)) > 0
+                          OR EXISTS (
+                              SELECT 1 
+                              FROM OPENJSON(metadata, '$.allowedRoles') WITH (role NVARCHAR(100) '$')
+                              WHERE role IN (SELECT value FROM STRING_SPLIT(?, ','))
+                          )
+                      )
+                  )
+              )
             ORDER BY JSON_VALUE(metadata, '$.source') ASC,
-                     TRY_CONVERT(int, JSON_VALUE(metadata, '$.chunk_index')) ASC,
+                     ISNULL(TRY_CONVERT(int, JSON_VALUE(metadata, '$.chunkIndex')), TRY_CONVERT(int, JSON_VALUE(metadata, '$.chunk_index'))) ASC,
                      id_int ASC;
         """
 
-        params = [limit, normalized_action, legacy_action] + sources
+        params = [limit, normalized_action, legacy_action] + sources + [user_roles, user_roles, user_roles]
         results = []
         with self._get_connection() as conn:
             with conn.cursor() as cursor:
