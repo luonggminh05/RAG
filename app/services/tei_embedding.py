@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class TeiEmbeddingService:
     def __init__(self):
         self.base_url = settings.tei_url.rstrip("/") + "/"
-        self.timeout = 120.0
+        self.timeout = 300.0
         
         # In-memory cache for query embeddings
         # limit by settings or default
@@ -25,7 +25,8 @@ class TeiEmbeddingService:
         if not texts:
             return []
 
-        batch_size = settings.ingestion_batch_size if settings.ingestion_batch_size > 0 else 32
+        # Use smaller batch size (8) for TEI calls to prevent timeouts in slow/CPU environments
+        batch_size = 8
         all_embeddings = []
 
         async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:

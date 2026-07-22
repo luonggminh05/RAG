@@ -274,16 +274,14 @@ class SqlDocumentRepository:
                 """, rows)
 
                 # 3. Merge temp table into Documents
-                # Use CAST(CAST(embedding_json AS VARCHAR(MAX)) AS VECTOR(1024)) to support SQL Server's vector type from string representation.
-                # If we encounter issues due to vector conversion, we can fall back or query.
-                cursor.execute("""
+                cursor.execute(f"""
                     MERGE Documents AS target
                     USING (
                         SELECT
                             id,
                             document,
                             metadata,
-                            CAST(CAST(embedding_json AS VARCHAR(MAX)) AS VECTOR(1024)) AS embedding
+                            CAST(CAST(embedding_json AS VARCHAR(MAX)) AS VECTOR({expected_dims})) AS embedding
                         FROM #DocumentUpsert
                     ) AS source
                     ON (target.id = source.id)
@@ -742,7 +740,7 @@ class SqlDocumentRepository:
                         "chunk_count": row[14],
                         "uploaded_by": row[15],
                         "tenant_id": row[16],
-                        "creation_time": row[17].isoformat() if row[17] else None
+                        "creation_time": (row[17].isoformat() + "Z") if row[17] else None
                     }
         return None
 
@@ -773,7 +771,7 @@ class SqlDocumentRepository:
                         "chunk_count": row[14],
                         "uploaded_by": row[15],
                         "tenant_id": row[16],
-                        "creation_time": row[17].isoformat() if row[17] else None
+                        "creation_time": (row[17].isoformat() + "Z") if row[17] else None
                     })
                 return results
 

@@ -45,8 +45,8 @@ class WordParser(BaseDocumentParser):
             line_text = TextArtifactCleaner.collapse_icon_gaps(raw_text)
             
             if line_text and line_text.strip():
-                parsed_paragraphs.Add = ParsedParagraph(index=paragraph_index, text=line_text)
-                parsed_paragraphs.append(parsed_paragraphs.Add)
+                p_item = ParsedParagraph(index=paragraph_index, text=line_text)
+                parsed_paragraphs.append(p_item)
 
         groups = []
         in_group = False
