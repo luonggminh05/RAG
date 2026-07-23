@@ -21,3 +21,6 @@ openai>=1.14.0           # Client tương thích OpenAI để gọi vLLM
 # OCR & Tokenizer
 pytesseract>=0.3.10
 tiktoken>=0.5.0
+
+# Markdown conversion (post-OCR, in-memory only)
+markitdown>=0.1.0

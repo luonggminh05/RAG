@@ -1,5 +1,6 @@
 import datetime
 import hashlib
+import io
 import logging
 import os
 from typing import List, Dict, Any, Optional, Tuple
@@ -28,6 +29,28 @@ class IngestionService:
         is_vision = content_kind == "image_ui_description"
 
         return is_tabular or is_slide or is_procedure or is_vision
+
+    def _convert_to_markdown(self, text: str) -> str:
+        """
+        Chuyển đổi nội dung văn bản thuần túy (đã qua OCR/parse) sang định dạng Markdown
+        bằng thư viện markitdown. Toàn bộ quá trình thực hiện trong bộ nhớ (in-memory),
+        không ghi file xuống đĩa.
+
+        Trả về Markdown string nếu thành công, hoặc text gốc nếu có lỗi.
+        """
+        if not text or not text.strip():
+            return text
+        try:
+            from markitdown import MarkItDown
+            md_converter = MarkItDown()
+            # Đưa text vào BytesIO stream, dùng extension .txt để markitdown nhận diện plain-text
+            stream = io.BytesIO(text.encode("utf-8"))
+            result = md_converter.convert_stream(stream, file_extension=".txt")
+            converted = result.text_content
+            return converted if converted and converted.strip() else text
+        except Exception as ex:
+            logger.warning(f"MarkItDown conversion failed, falling back to original text: {ex}")
+            return text
 
     async def ingest_file(
         self,
@@ -94,7 +117,14 @@ class IngestionService:
             if not parsed_docs:
                 logger.warning(f"No content extracted from file: {file_name}")
 
-            # 2. Chunk documents using SemanticChunker or bypass logic
+            # 2. Convert extracted text to Markdown (in-memory, not persisted to disk)
+            #    Bỏ qua các doc bypass splitter (tabular, slide, vision) vì đã có định dạng riêng
+            for doc in parsed_docs:
+                if not self._should_bypass_splitter(doc.metadata, is_tabular):
+                    doc.page_content = self._convert_to_markdown(doc.page_content)
+            logger.info(f"MarkItDown conversion applied for non-bypass documents in: {file_name}")
+
+            # 3. Chunk documents using SemanticChunker or bypass logic
             all_chunks: List[IngestedDocument] = []
             for doc in parsed_docs:
                 if self._should_bypass_splitter(doc.metadata, is_tabular):
@@ -110,7 +140,7 @@ class IngestionService:
 
             total_chunks = len(all_chunks)
 
-            # 3. Batch Embed and Upsert with Flat Metadata Schema
+            # 4. Batch Embed and Upsert with Flat Metadata Schema
             batch_size = settings.ingestion_batch_size
             now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
