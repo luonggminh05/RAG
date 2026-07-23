@@ -5,10 +5,10 @@ class Settings(BaseSettings):
     # API settings
     required_api_key: str = Field(default="", alias="RAG_API_REQUIRED_API_KEY")
     
-    # LLM Settings (OpenAI-compatible vLLM/LM Studio)
-    llm_endpoint: str = Field(default="http://192.168.18.1:1224/v1", alias="UPRAG_LMSTUDIOENDPOINT")
-    llm_model_id: str = Field(default="qwen2.5-vl-7b-instruct", alias="UPRAG_MODELID")
-    llm_api_key: str = Field(default="EMPTY", alias="UPRAG_APIKEY")
+    # LLM Settings (OpenAI-compatible Ollama)
+    llm_endpoint: str = Field(default="http://192.168.18.129:11434/v1", alias="UPRAG_LMSTUDIOENDPOINT")
+    llm_model_id: str = Field(default="qwen2.5vl:7b", alias="UPRAG_MODELID")
+    llm_api_key: str = Field(default="ollama", alias="UPRAG_APIKEY")
     
     # Embedding settings (TEI Server)
     tei_url: str = Field(default="http://localhost:8080", alias="TEI_URL")
@@ -29,9 +29,9 @@ class Settings(BaseSettings):
     ingestion_papers_dir: str = Field(default="papers", alias="INGESTION_PAPERSDIRECTORY")
     ingestion_enable_ocr: bool = Field(default=True, alias="INGESTION_ENABLEOCR")
     ingestion_enable_vision_caption: bool = Field(default=True, alias="INGESTION_ENABLEVISIONCAPTION")
-    ingestion_vision_api_url: str = Field(default="http://192.168.18.1:1224/v1/chat/completions", alias="INGESTION_VISIONAPIURL")
-    ingestion_vision_api_key: str = Field(default="lm-studio", alias="INGESTION_VISIONAPIKEY")
-    ingestion_vision_model: str = Field(default="qwen2.5-vl-7b-instruct", alias="INGESTION_VISIONMODEL")
+    ingestion_vision_api_url: str = Field(default="http://192.168.18.129:11434/v1/chat/completions", alias="INGESTION_VISIONAPIURL")
+    ingestion_vision_api_key: str = Field(default="ollama", alias="INGESTION_VISIONAPIKEY")
+    ingestion_vision_model: str = Field(default="qwen2.5vl:7b", alias="INGESTION_VISIONMODEL")
     ingestion_tessdata_path: str = Field(default="tessdata", alias="INGESTION_TESSDATAPATH")
     ingestion_min_vision_image_width: int = Field(default=100, alias="INGESTION_MINVISIONIMAGEWIDTH")
     ingestion_min_vision_image_height: int = Field(default=100, alias="INGESTION_MINVISIONIMAGEHEIGHT")

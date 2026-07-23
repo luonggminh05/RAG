@@ -21,12 +21,16 @@ scp -r "$PSScriptRoot\app" $Vm`:$RemoteApp/
 scp "$PSScriptRoot\requirements.txt" $Vm`:$RemoteApp/
 scp "$PSScriptRoot\Dockerfile" $Vm`:$RemoteApp/
 scp "$PSScriptRoot\rag-python.yaml" $Vm`:$RemoteApp/
+if (Test-Path "$PSScriptRoot\ollama-pod.yaml") {
+    scp "$PSScriptRoot\ollama-pod.yaml" $Vm`:$RemoteApp/
+}
 
 Write-Host "3. Building Docker image and importing into RKE2 containerd..."
 ssh -t $Vm "cd $RemoteApp && sudo docker build -t rag_api_python:latest -f Dockerfile . && sudo docker save rag_api_python:latest -o images.tar && $Ctr images import images.tar && sudo rm -f images.tar"
 
 Write-Host "4. Applying Kubernetes manifests..."
 ssh -t $Vm "$Kubectl apply -f $RemoteApp/rag-python.yaml"
+ssh -t $Vm "if [ -f $RemoteApp/ollama-pod.yaml ]; then $Kubectl apply -f $RemoteApp/ollama-pod.yaml; fi"
 
 Write-Host "5. Restarting application pods..."
 ssh -t $Vm "$Kubectl delete pod -l app=rag-python-service --force --grace-period=0 --ignore-not-found=true"

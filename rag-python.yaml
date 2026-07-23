@@ -24,11 +24,11 @@ spec:
             - name: TEI_URL
               value: "http://embedding-server:80"
             - name: UPRAG_LMSTUDIOENDPOINT
-              value: "http://192.168.18.1:1224/v1"
+              value: "http://192.168.18.129:11434/v1"
             - name: UPRAG_MODELID
-              value: "qwen2.5-vl-7b-instruct"
+              value: "qwen2.5vl:7b"
             - name: UPRAG_APIKEY
-              value: "EMPTY"
+              value: "ollama"
             - name: SQLSERVER_CONNECTIONSTRING
               valueFrom:
                 secretKeyRef:
@@ -39,11 +39,11 @@ spec:
             - name: INGESTION_ENABLEVISIONCAPTION
               value: "true"
             - name: INGESTION_VISIONAPIURL
-              value: "http://192.168.18.1:1224/v1/chat/completions"
+              value: "http://192.168.18.129:11434/v1/chat/completions"
             - name: INGESTION_VISIONAPIKEY
-              value: "lm-studio"
+              value: "ollama"
             - name: INGESTION_VISIONMODEL
-              value: "qwen2.5-vl-7b-instruct"
+              value: "qwen2.5vl:7b"
             - name: INGESTION_TESSDATAPATH
               value: "/usr/share/tesseract-ocr/5/tessdata"
           resources:

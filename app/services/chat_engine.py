@@ -9,6 +9,7 @@ from app.services.tei_embedding import TeiEmbeddingService
 from app.services.query_classifier import QueryClassifier, QueryIntent
 from app.services.action_classifier import ActionKindClassifier
 from app.services.citation_helper import CitationHelper
+from app.ingestion.text_cleaner import TextArtifactCleaner
 from cachetools import TTLCache
 
 logger = logging.getLogger(__name__)
