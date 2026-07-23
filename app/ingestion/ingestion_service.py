@@ -106,11 +106,9 @@ class IngestionService:
             # Delete any previous chunks
             self.repository.delete_documents_for_file(relative_path)
 
-            # 1. Parse and Normalize all documents from stream
+            # 1. Parse all documents from stream (raw text & OCR)
             parsed_docs: List[IngestedDocument] = []
             async for doc in parser.parse_stream_async(file_path, file_name):
-                # Apply Vietnamese Normalization
-                doc.page_content = VietnameseNormalizer.normalize(doc.page_content)
                 if doc.page_content.strip():
                     parsed_docs.append(doc)
 
@@ -124,7 +122,12 @@ class IngestionService:
                     doc.page_content = self._convert_to_markdown(doc.page_content)
             logger.info(f"MarkItDown conversion applied for non-bypass documents in: {file_name}")
 
-            # 3. Chunk documents using SemanticChunker or bypass logic
+            # 3. Apply Vietnamese Normalization on the full Markdown (or raw text for bypass docs)
+            #    This runs: Unicode NFC -> Strip excess spaces -> Normalize newlines -> Expand acronyms -> Vietnamese clean (punctuation, zero-width, tone marks)
+            for doc in parsed_docs:
+                doc.page_content = VietnameseNormalizer.normalize(doc.page_content, expand_acronyms=True)
+
+            # 4. Chunk documents using SemanticChunker or bypass logic
             all_chunks: List[IngestedDocument] = []
             for doc in parsed_docs:
                 if self._should_bypass_splitter(doc.metadata, is_tabular):
@@ -140,7 +143,7 @@ class IngestionService:
 
             total_chunks = len(all_chunks)
 
-            # 4. Batch Embed and Upsert with Flat Metadata Schema
+            # 5. Batch Embed and Upsert with Flat Metadata Schema
             batch_size = settings.ingestion_batch_size
             now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
