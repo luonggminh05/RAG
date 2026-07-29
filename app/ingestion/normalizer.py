@@ -68,9 +68,10 @@ class VietnameseNormalizer:
         # a) Loại bỏ ký tự zero-width và ký tự điều khiển
         text = cls._ZERO_WIDTH_PATTERN.sub('', text)
 
-        # b) Chuẩn hóa khoảng trắng quanh dấu câu (chỉ áp dụng với chữ cái để tránh lỗi số thập phân hoặc markdown)
+        # b) Chuẩn hóa khoảng trắng quanh dấu câu (tránh làm hỏng tên file .py, .docx hoặc số thập phân)
         text = re.sub(r'([a-zA-Zà-ỹÀ-Ỹ])\s+([,.;:!?])', r'\1\2', text)
-        text = re.sub(r'([,.;:!?])([a-zA-Zà-ỹÀ-Ỹ])', r'\1 \2', text)
+        text = re.sub(r'([,;:!?])([a-zA-Zà-ỹÀ-Ỹ])', r'\1 \2', text)
+        text = re.sub(r'\.([A-ZÀ-Ỹ])', r'. \1', text)
 
         # c) Chuẩn hóa đặt dấu thanh (đồng nhất hóa sang kiểu mới nhưng giữ nguyên dấu thanh gốc)
         for old_tone, new_tone in cls._TONE_REPLACEMENTS:

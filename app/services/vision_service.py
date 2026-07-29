@@ -91,7 +91,7 @@ class VisionService:
                     caption = res_data["choices"][0]["message"]["content"]
                     return caption.strip() if caption else None
             except Exception as ex:
-                logger.error(f"Vision service API error for image from {metadata.get('source')}: {ex}")
+                logger.error(f"Vision service API error for image from {metadata.get('source')}: {repr(ex)}", exc_info=True)
                 return None
 
     async def describe_screenshot(
@@ -155,7 +155,7 @@ class VisionService:
                     caption = res_data["choices"][0]["message"]["content"]
                     return caption.strip() if caption else None
             except Exception as ex:
-                logger.error(f"Failed to generate description for screenshot: {ex}")
+                logger.error(f"Failed to generate description for screenshot: {repr(ex)}", exc_info=True)
                 return None
 
     def _build_prompt(self, ocr_text: Optional[str]) -> str:

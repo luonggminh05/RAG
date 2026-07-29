@@ -30,10 +30,7 @@ spec:
             - name: UPRAG_APIKEY
               value: "ollama"
             - name: SQLSERVER_CONNECTIONSTRING
-              valueFrom:
-                secretKeyRef:
-                  name: ragapi-sql-secret
-                  key: connection-string
+              value: "Driver={ODBC Driver 18 for SQL Server};Server=192.168.18.1;Database=RagVectorDb;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True;Encrypt=Optional;"
             - name: INGESTION_ENABLEOCR
               value: "true"
             - name: INGESTION_ENABLEVISIONCAPTION

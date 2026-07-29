@@ -809,7 +809,9 @@ class SqlDocumentRepository:
                     """, (str(doc_id), str(doc_id)))
                     paths = [r[0] for r in cursor.fetchall() if r[0]]
 
-                    # 3. Delete from IngestionFiles
+                    # 3. Delete from IngestionFiles (both from paths in Documents AND directly via FilePath)
+                    norm_file_path = file_path.replace("\\", "/").strip("/")
+                    cursor.execute("DELETE FROM IngestionFiles WHERE relative_path = ? OR relative_path = ?;", (file_path, norm_file_path))
                     if paths:
                         for path in paths:
                             cursor.execute("DELETE FROM IngestionFiles WHERE relative_path = ?;", (path,))

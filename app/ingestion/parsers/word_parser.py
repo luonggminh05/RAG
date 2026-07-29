@@ -124,27 +124,21 @@ class WordParser(BaseDocumentParser):
                 metadata=metadata
             ))
 
-        # 2. Process non-consumed paragraphs (standard text info)
-        for p in parsed_paragraphs:
-            if p.index in consumed:
-                continue
-
-            if p.text and p.text.strip():
-                detail_action = ActionKindClassifier.determine_action_kind(p.text)
-                metadata = {
-                    "source": file_name,
-                    "type": "docx_text",
-                    "content_kind": "instruction_text",
-                    "instruction_role": "ui_details",
-                    "paragraph_index": p.index
-                }
-                if detail_action:
-                    metadata["action_kind"] = detail_action
-
-                emitted_docs.append(IngestedDocument(
-                    page_content=f"[VĂN BẢN HƯỚNG DẪN]\n{p.text}",
-                    metadata=metadata
-                ))
+        # 2. Process non-consumed paragraphs (group standard text together so SemanticChunker can chunk cohesive blocks)
+        non_consumed = [p for p in parsed_paragraphs if p.index not in consumed and p.text and p.text.strip()]
+        if non_consumed:
+            combined_text = "\n\n".join(p.text for p in non_consumed)
+            metadata = {
+                "source": file_name,
+                "type": "docx_text",
+                "content_kind": "instruction_text",
+                "instruction_role": "ui_details",
+                "paragraph_index": non_consumed[0].index
+            }
+            emitted_docs.append(IngestedDocument(
+                page_content=f"[VĂN BẢN HƯỚNG DẪN]\n{combined_text}",
+                metadata=metadata
+            ))
 
         # Sort documents by paragraph index
         emitted_docs.sort(key=lambda d: d.metadata.get("paragraph_index", 0))
