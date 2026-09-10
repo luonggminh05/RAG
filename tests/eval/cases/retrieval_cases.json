@@ -1,0 +1,37 @@
+[
+  {
+    "id": "retrieval_001",
+    "query": "Quy trình phê duyệt mua sắm tài sản cố định gồm những bước nào?",
+    "expected_source_keywords": ["mua sắm", "tài sản cố định", "phê duyệt", "quy trình"],
+    "expected_sources": ["Quy_trinh_mua_sam_TSCD.pdf"],
+    "top_k": 5
+  },
+  {
+    "id": "retrieval_002",
+    "query": "Làm thế nào để tạo mới phiếu yêu cầu mua sắm trên gAMSPro?",
+    "expected_source_keywords": ["phiếu yêu cầu", "tạo mới", "gAMSPro", "hướng dẫn"],
+    "expected_sources": ["HDSD_gAMSPro_PhanHe_MuaSam.pdf"],
+    "top_k": 5
+  },
+  {
+    "id": "retrieval_003",
+    "query": "Ai có thẩm quyền phê duyệt thanh lý tài sản trên 500 triệu đồng?",
+    "expected_source_keywords": ["thanh lý", "thẩm quyền", "phê duyệt", "tài sản"],
+    "expected_sources": ["Quy_che_quan_ly_tai_san.docx"],
+    "top_k": 5
+  },
+  {
+    "id": "retrieval_004",
+    "query": "Hướng dẫn điều chuyển tài sản giữa các phòng giao dịch",
+    "expected_source_keywords": ["điều chuyển", "tài sản", "phòng giao dịch", "biên bản"],
+    "expected_sources": ["So_tay_kiem_ke_dieu_chuyen.pdf"],
+    "top_k": 5
+  },
+  {
+    "id": "retrieval_005",
+    "query": "Hồ sơ thanh toán hợp đồng mua sắm gồm những chứng từ gì?",
+    "expected_source_keywords": ["hồ sơ", "thanh toán", "hợp đồng", "chứng từ", "hóa đơn"],
+    "expected_sources": ["Quy_dinh_thanh_toan_mua_sam.pdf"],
+    "top_k": 5
+  }
+]

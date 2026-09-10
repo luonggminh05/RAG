@@ -1,0 +1,17 @@
+import anyio
+from typing import List
+from app.ai.rag.ingestion.parsers.base import BaseDocumentParser, IngestedDocument
+
+class TextParser(BaseDocumentParser):
+    def can_parse(self, extension: str) -> bool:
+        return extension.lower() in [".txt", ".md", ".rst", ".json", ".log"]
+
+    async def parse_async(self, file_path: str, file_name: str) -> List[IngestedDocument]:
+        path = anyio.Path(file_path)
+        content = await path.read_text(encoding="utf-8")
+        return [
+            IngestedDocument(
+                page_content=content,
+                metadata={"source": file_name, "type": "text"}
+            )
+        ]

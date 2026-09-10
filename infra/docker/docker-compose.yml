@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  # Ollama LLM / Vision Service
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Text Embeddings Inference (BGE-M3 1024-dim dense/sparse embedding)
+  tei-embedding:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.2
+    container_name: tei-embedding
+    ports:
+      - "8080:80"
+    volumes:
+      - tei-data:/data
+    command: --model-id BAAI/bge-m3 --auto-truncate
+    restart: unless-stopped
+
+volumes:
+  ollama-data:
+  tei-data:

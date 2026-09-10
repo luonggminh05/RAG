@@ -1,0 +1,44 @@
+[
+  {
+    "id": "gen_001",
+    "query": "Quy trình tạo PYC trên hệ thống gAMSPro như thế nào?",
+    "context": "Để tạo phiếu yêu cầu (PYC) mua sắm trên hệ thống gAMSPro, người dùng thực hiện: Bước 1: Vào menu Quản lý mua sắm -> Chọn Tạo mới PYC. Bước 2: Nhập đầy đủ thông tin hàng hóa, số lượng, dự toán và lý do. Bước 3: Đính kèm báo giá và nhấn nút 'Gửi phê duyệt' để chuyển lên cấp quản lý xét duyệt.",
+    "expected_answer_keywords": ["Bước 1", "Tạo mới PYC", "Gửi phê duyệt", "quản lý xét duyệt"],
+    "ground_truth": "Quy trình tạo PYC trên hệ thống gAMSPro gồm các bước: Bước 1: Vào menu Quản lý mua sắm -> Chọn Tạo mới PYC. Bước 2: Nhập thông tin hàng hóa, số lượng, dự toán. Bước 3: Đính kèm báo giá và nhấn 'Gửi phê duyệt' để chuyển quản lý xét duyệt.",
+    "should_not_contain": ["chứng khoán", "thời tiết", "chuyển khoản cá nhân", "game"],
+    "sample_citations": [
+      {
+        "source": "HDSD_gAMSPro_PhanHe_MuaSam.pdf",
+        "page": 12
+      }
+    ]
+  },
+  {
+    "id": "gen_002",
+    "query": "Hạn mức phê duyệt mua sắm của Trưởng phòng là bao nhiêu?",
+    "context": "Theo Điều 8 Quy chế tài chính nội bộ: Trưởng phòng có thẩm quyền phê duyệt các gói mua sắm tài sản, công cụ dụng cụ có giá trị dưới 50 triệu đồng. Đối với các khoản chi từ 50 triệu đến 200 triệu đồng phải có sự phê duyệt của Phó Giám đốc khối.",
+    "expected_answer_keywords": ["Trưởng phòng", "dưới 50 triệu", "Quy chế"],
+    "ground_truth": "Theo Quy chế tài chính nội bộ, Trưởng phòng có thẩm quyền phê duyệt các gói mua sắm tài sản có giá trị dưới 50 triệu đồng.",
+    "should_not_contain": ["100 triệu", "bóng đá", "tùy ý chi tiêu"],
+    "sample_citations": [
+      {
+        "source": "Quy_che_tai_chinh_noi_bo.pdf",
+        "page": 24
+      }
+    ]
+  },
+  {
+    "id": "gen_003",
+    "query": "Biên bản bàn giao tài sản cần chữ ký của những ai?",
+    "context": "Biên bản bàn giao tài sản cố định bắt buộc phải có đầy đủ chữ ký của: Bên giao (người trực tiếp bàn giao), Bên nhận (người tiếp nhận quản lý tài sản), và Đại diện Phòng Quản lý tài sản (chứng kiến và lưu hồ sơ).",
+    "expected_answer_keywords": ["Bên giao", "Bên nhận", "Phòng Quản lý tài sản"],
+    "ground_truth": "Biên bản bàn giao tài sản cần có chữ ký của 3 bên: Bên giao, Bên nhận và Đại diện Phòng Quản lý tài sản.",
+    "should_not_contain": ["khách hàng", "bảo vệ", "công an"],
+    "sample_citations": [
+      {
+        "source": "Quy_trinh_ban_giao_TSCD.pdf",
+        "page": 5
+      }
+    ]
+  }
+]

@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="pageTitle">RAG Cosmic | Hệ thống Quản lý Tri thức</title>
+    
+    <!-- Google Fonts: Newsreader (Claude Serif), Plus Jakarta Sans, Inter & Fira Code -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Marked.js & Highlight.js for Markdown & Code Syntax Highlighting -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+    <!-- App Stylesheet -->
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+<body class="claude-cosmic-theme">
+    <div class="app-layout">
+        
+        <!-- DRAG & DROP OVERLAY FOR IMAGES -->
+        <div class="drag-drop-overlay" id="dragDropOverlay">
+            <div class="overlay-glass-card">
+                <div class="overlay-icon-wrap">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <polyline points="21 15 16 10 5 21" />
+                    </svg>
+                </div>
+                <div class="overlay-text" data-i18n="drag_drop_hint">Thả hình ảnh vào đây để tải lên</div>
+                <div class="overlay-subtext">Hỗ trợ PNG, JPG, WebP tối đa 3 ảnh (Tự động nén & tối ưu hóa)</div>
+            </div>
+        </div>
+
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-top-section">
+                <!-- Brand Header (RAG Cosmic) -->
+                <div class="claude-brand-row">
+                    <div class="brand-title-wrap">
+                        <span class="claude-brand-name">RAG <span class="brand-accent-tag">Cosmic</span></span>
+                    </div>
+                    <button class="sidebar-icon-btn" id="collapseSidebarBtn" title="Thu gọn / Mở rộng thanh bên">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="9" y1="3" x2="9" y2="21"></line>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Custom Navigation Rows -->
+                <nav class="claude-nav-menu">
+                    <!-- Row 1: + New -->
+                    <button class="nav-menu-item new-chat-action" id="newChatBtn" title="Cuộc trò chuyện mới">
+                        <span class="nav-item-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                        </span>
+                        <span class="nav-item-label" data-i18n="new_chat">Cuộc trò chuyện mới</span>
+                    </button>
+
+                    <!-- Row 2: Manage Document -->
+                    <button class="nav-menu-item" id="openManageDocBtn" title="Quản lý tài liệu">
+                        <span class="nav-item-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                            </svg>
+                        </span>
+                        <span class="nav-item-label" data-i18n="manage_doc">Quản lý tài liệu</span>
+                    </button>
+
+                    <!-- Row 3: Vision mode -->
+                    <div class="nav-menu-item nav-switch-item" id="visionModeItem" title="Chế độ thị giác (Vision)">
+                        <div class="nav-item-left">
+                            <span class="nav-item-icon">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                                </svg>
+                            </span>
+                            <span class="nav-item-label" data-i18n="vision_mode">Chế độ thị giác</span>
+                        </div>
+                        <label class="claude-switch">
+                            <input type="checkbox" id="visionToggle" checked>
+                            <span class="claude-slider"></span>
+                        </label>
+                    </div>
+
+                    <!-- Row 4: Phân quyền RBAC (Custom Soft Rounded Cosmic Dropdown) -->
+                    <div class="custom-dropdown-wrap" id="rbacDropdownWrap" title="Phân quyền người dùng">
+                        <button class="custom-dropdown-btn" id="rbacTriggerBtn" type="button">
+                            <div class="btn-content-left">
+                                <span class="nav-item-icon">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                                    </svg>
+                                </span>
+                                <span class="dropdown-label" id="rbacSelectedLabel">Admin</span>
+                            </div>
+                            <span class="dropdown-chevron">▾</span>
+                        </button>
+                        <div class="custom-dropdown-panel" id="rbacDropdownPanel">
+                            <div class="custom-dropdown-option active" data-role="Admin">
+                                <span class="opt-name">Admin</span>
+                                <span class="opt-check">✓</span>
+                            </div>
+                            <div class="custom-dropdown-option" data-role="Elite">
+                                <span class="opt-name">Elite</span>
+                                <span class="opt-check">✓</span>
+                            </div>
+                            <div class="custom-dropdown-option" data-role="Officer">
+                                <span class="opt-name">Officer</span>
+                                <span class="opt-check">✓</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Row 5: Chọn ngôn ngữ (Custom Soft Rounded Cosmic Dropdown) -->
+                    <div class="custom-dropdown-wrap" id="langDropdownWrap" title="Ngôn ngữ giao diện">
+                        <button class="custom-dropdown-btn" id="langTriggerBtn" type="button">
+                            <div class="btn-content-left">
+                                <span class="nav-item-icon">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <line x1="2" y1="12" x2="22" y2="12"></line>
+                                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                                    </svg>
+                                </span>
+                                <span class="dropdown-label" id="langSelectedLabel">Tiếng Việt</span>
+                            </div>
+                            <span class="dropdown-chevron">▾</span>
+                        </button>
+                        <div class="custom-dropdown-panel" id="langDropdownPanel">
+                            <div class="custom-dropdown-option active" data-lang="vi">
+                                <span class="opt-name">Tiếng Việt</span>
+                                <span class="opt-check">✓</span>
+                            </div>
+                            <div class="custom-dropdown-option" data-lang="en">
+                                <span class="opt-name">English</span>
+                                <span class="opt-check">✓</span>
+                            </div>
+                        </div>
+                    </div>
+                </nav>
+            </div>
+
+            <!-- Middle Section: Pinned & Recent Chats -->
+            <div class="sidebar-conversations-section">
+                <!-- Pinned Section -->
+                <div class="sidebar-group-header">
+                    <span data-i18n="pinned_header">Đã ghim</span>
+                </div>
+                <div class="sidebar-pinned-list">
+                    <div class="conv-item pinned-sample" data-prompt="Hướng dẫn quy trình phê duyệt đề xuất mua sắm tài sản trên hệ thống">
+                        <span class="conv-bullet"></span>
+                        <span class="conv-title" data-i18n="pinned_sample_1">Quy trình phê duyệt mua sắm TSCĐ</span>
+                    </div>
+                </div>
+
+                <!-- Chats and tasks -->
+                <div class="sidebar-group-header">
+                    <span data-i18n="chats_header">Lịch sử trò chuyện</span>
+                </div>
+                <div class="conversations-list" id="conversationsList">
+                    <div class="empty-conv-text" data-i18n="loading_history">Đang tải lịch sử...</div>
+                </div>
+            </div>
+
+            <!-- Bottom Section: User Profile & Dark/Light Mode Switcher -->
+            <div class="sidebar-footer">
+                <div class="user-profile-row">
+                    <div class="user-avatar-badge" id="userAvatar">LM</div>
+                    <div class="user-info-wrap">
+                        <span class="user-display-name">Lương</span>
+                        <span class="user-role-badge" id="userRoleBadge">Admin</span>
+                    </div>
+                </div>
+                <div class="footer-quick-actions">
+                    <!-- Dark / Light Theme Toggle Button -->
+                    <button class="footer-icon-action-btn theme-toggle-btn" id="themeToggleBtn" title="Chuyển chế độ Sáng / Tối (Dark/Light Mode)">
+                        <!-- Moon Icon for Dark Mode -->
+                        <svg class="theme-icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                        </svg>
+                        <!-- Sun Icon for Light Mode -->
+                        <svg class="theme-icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;">
+                            <circle cx="12" cy="12" r="5"></circle>
+                            <line x1="12" y1="1" x2="12" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="23"></line>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                            <line x1="1" y1="12" x2="3" y2="12"></line>
+                            <line x1="21" y1="12" x2="23" y2="12"></line>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                        </svg>
+                    </button>
+
+                    <!-- Sidebar Collapse Button -->
+                    <button class="footer-icon-action-btn" id="sidebarCollapseTrigger" title="Thu gọn / Mở rộng thanh bên">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="9" y1="3" x2="9" y2="21"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- MAIN VIEW -->
+        <main class="main-content">
+            
+            <!-- Top Minimal Header -->
+            <header class="topbar-minimal">
+                <div class="topbar-left-actions">
+                    <button class="topbar-sidebar-toggle-btn" id="topbarSidebarToggleBtn" title="Đóng / Mở Sidebar (Ctrl+\)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="9" y1="3" x2="9" y2="21"></line>
+                        </svg>
+                    </button>
+                </div>
+                <div class="header-right-badges">
+                    <div class="system-status-pill">
+                        <span class="status-dot online" id="statusDot"></span>
+                        <span class="status-text" id="statusText">RAG Engine Ready</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- CHAT SCROLL AREA -->
+            <div class="chat-container" id="chatContainer">
+                <div class="chat-inner-wrapper">
+                    
+                    <!-- Center Greeting Hero Screen -->
+                    <div class="welcome-hero" id="welcomeHero">
+                        <div class="hero-center-content">
+                            <!-- Solar Asterisk Logo -->
+                            <div class="claude-hero-asterisk">
+                                <svg width="38" height="38" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 1L13.8 8.2L21 6.5L16.2 12L21 17.5L13.8 15.8L12 23L10.2 15.8L3 17.5L7.8 12L3 6.5L10.2 8.2L12 1Z" />
+                                </svg>
+                            </div>
+                            <h1 class="claude-hero-title" id="greetingTitle">
+                                Suy ngẫm buổi tối
+                            </h1>
+                        </div>
+                    </div>
+
+                    <!-- Message List -->
+                    <div class="message-list" id="messageList"></div>
+                </div>
+            </div>
+
+            <!-- Floating Scroll-to-Bottom Button -->
+            <button type="button" class="scroll-bottom-floating-btn" id="scrollBottomBtn" title="Cuộn xuống tin nhắn mới nhất" aria-label="Cuộn xuống tin nhắn mới nhất">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <polyline points="19 12 12 19 5 12"></polyline>
+                </svg>
+                <span class="scroll-unread-indicator" id="scrollUnreadDot"></span>
+            </button>
+
+
+            <!-- CHAT INPUT DOCK -->
+            <div class="input-dock-container" id="inputDockContainer">
+                <div class="input-dock-inner">
+                    
+                    <!-- Attached Images Preview Strip -->
+                    <div class="image-preview-strip" id="imagePreviewStrip"></div>
+
+                    <!-- Floating Input Card -->
+                    <div class="claude-input-card" id="inputBoxWrapper">
+                        
+                        <!-- Textarea -->
+                        <textarea 
+                            id="chatInput" 
+                            class="claude-textarea" 
+                            placeholder="Tôi có thể hỗ trợ gì cho bạn hôm nay?" 
+                            rows="1"
+                        ></textarea>
+
+                        <!-- Bottom Controls Bar Inside Input Card -->
+                        <div class="claude-input-footer">
+                            <div class="input-left-group">
+                                <!-- + Button for Attachment -->
+                                <label class="claude-attach-pill-btn" id="attachBtn" title="Đính kèm hình ảnh (PNG, JPG)">
+                                    <input type="file" id="imageFileInput" accept="image/*" multiple style="display:none;">
+                                    <span class="plus-icon">+</span>
+                                </label>
+
+                                <!-- Mode Pills: Chat / Reasoning -->
+                                <div class="claude-mode-pills">
+                                    <button class="mode-pill active" id="chatModePill" data-i18n="mode_chat">Trò chuyện</button>
+                                    <button class="mode-pill" id="coworkModePill" data-i18n="mode_reasoning">Suy luận sâu</button>
+                                </div>
+                            </div>
+
+                            <div class="input-right-group">
+                                <!-- Model Selector Pill -->
+                                <div class="claude-model-pill">
+                                    <select class="claude-model-select" id="modelSelect">
+                                        <option value="qwen2.5vl:7b" selected>Qwen 2.5-VL 7B</option>
+                                        <option value="deepseek-r1:7b">DeepSeek-R1 7B</option>
+                                        <option value="qwen2.5:3b">Qwen 2.5 3B</option>
+                                        <option value="llama3.2:3b">Llama 3.2 3B</option>
+                                    </select>
+                                    <span class="model-quality-tag" id="modelQualityTag">High</span>
+                                    <span class="dropdown-arrow">▾</span>
+                                </div>
+
+                                <!-- Send Button -->
+                                <button class="claude-send-btn" id="sendBtn" title="Gửi tin nhắn (Enter)">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                        <line x1="12" y1="19" x2="12" y2="5"></line>
+                                        <polyline points="5 12 12 5 19 12"></polyline>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ==========================================================================
+         MODAL 1: BẢNG NỔI MANAGE DOCUMENT (Hỗ trợ kéo / co dãn 4 cạnh & 4 góc)
+         ========================================================================== -->
+    <div class="modal-backdrop" id="manageDocModal">
+        <div class="modal-dialog manage-dialog resizable-modal" id="manageDialogBox">
+            <!-- 8 Multi-directional Edge & Corner Drag Resize Handles -->
+            <div class="edge-resize-handle handle-top"></div>
+            <div class="edge-resize-handle handle-bottom"></div>
+            <div class="edge-resize-handle handle-left"></div>
+            <div class="edge-resize-handle handle-right"></div>
+            <div class="edge-resize-handle handle-top-left"></div>
+            <div class="edge-resize-handle handle-top-right"></div>
+            <div class="edge-resize-handle handle-bottom-left"></div>
+            <div class="edge-resize-handle handle-bottom-right"></div>
+
+            <div class="modal-header">
+                <div class="modal-title-wrap">
+                    <div class="cosmic-solar-logo-sm">
+                        <div class="sun-core-sm"></div>
+                        <div class="orbit-ring-sm"></div>
+                    </div>
+                    <div>
+                        <h2 data-i18n="manage_modal_title">Quản lý tài liệu tri thức</h2>
+                        <p class="modal-subtitle" data-i18n="manage_modal_subtitle">Dữ liệu tài liệu được tải trực tiếp từ cơ sở dữ liệu với phân quyền RBAC</p>
+                    </div>
+                </div>
+                
+                <!-- Header Actions: Upload Document Button ở góc trên bên phải & Nút Đóng -->
+                <div class="modal-header-actions">
+                    <button class="header-upload-trigger-btn" id="openUploadFromManageBtn" title="Mở bảng nạp tài liệu mới">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                        <span data-i18n="upload_doc_btn">Tải tài liệu lên</span>
+                    </button>
+                    <button class="sidebar-icon-btn" id="closeManageDocModalBtn" title="Đóng bảng">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Documents Table Body -->
+            <div class="manage-modal-body">
+                <div class="docs-table-wrapper">
+                    <table class="docs-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="col_doc_name">TÊN TÀI LIỆU</th>
+                                <th data-i18n="col_upload_date">NGÀY TẢI LÊN</th>
+                                <th data-i18n="col_access_scope">PHẠM VI TRUY CẬP</th>
+                                <th data-i18n="col_status">TRẠNG THÁI</th>
+                                <th style="text-align: right;" data-i18n="col_actions">HÀNH ĐỘNG</th>
+                            </tr>
+                        </thead>
+                        <tbody id="docsTableBody">
+                            <tr>
+                                <td colspan="5" class="text-center" data-i18n="loading_db">Đang tải dữ liệu từ cơ sở dữ liệu...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================================================
+         MODAL 2: BẢNG NỔI UPLOAD DOCUMENT (Hỗ trợ kéo / co dãn 4 cạnh & 4 góc)
+         ========================================================================== -->
+    <div class="modal-backdrop" id="uploadDocModal">
+        <div class="modal-dialog upload-dialog resizable-modal" id="uploadDialogBox">
+            <!-- 8 Multi-directional Edge & Corner Drag Resize Handles -->
+            <div class="edge-resize-handle handle-top"></div>
+            <div class="edge-resize-handle handle-bottom"></div>
+            <div class="edge-resize-handle handle-left"></div>
+            <div class="edge-resize-handle handle-right"></div>
+            <div class="edge-resize-handle handle-top-left"></div>
+            <div class="edge-resize-handle handle-top-right"></div>
+            <div class="edge-resize-handle handle-bottom-left"></div>
+            <div class="edge-resize-handle handle-bottom-right"></div>
+
+            <div class="modal-header">
+                <div class="modal-title-wrap">
+                    <div class="cosmic-solar-logo-sm">
+                        <div class="sun-core-sm"></div>
+                        <div class="orbit-ring-sm"></div>
+                    </div>
+                    <div>
+                        <h2 data-i18n="upload_modal_title">Tải tài liệu mới</h2>
+                    </div>
+                </div>
+                <button class="sidebar-icon-btn" id="closeUploadDocModalBtn" title="Đóng bảng">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="upload-modal-body">
+                <form id="uploadDocForm" class="upload-form">
+                    <!-- Dropzone File Explorer Click Area (Multiple Files) -->
+                    <div class="dropzone" id="dropzone">
+                        <input type="file" id="docFileInput" accept=".pdf,.docx,.pptx,.xlsx,.csv,.png,.jpg,.jpeg" multiple style="display:none;">
+                        <div class="dropzone-icon">
+                            <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                        </div>
+                        <div class="dropzone-text" id="dropzoneText" data-i18n="dropzone_text">Kéo thả tệp vào đây hoặc <span class="highlight">Bấm để chọn tệp từ máy tính</span></div>
+                        <div class="dropzone-sub" data-i18n="dropzone_sub">Hỗ trợ: PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), Ảnh scan (.png, .jpg)</div>
+                        <div class="selected-files-list-badge" id="selectedFilesBadge" style="display:none;"></div>
+                    </div>
+
+                    <!-- Row 1: Tên tài liệu & Ngày Upload (Lịch chọn ngày) -->
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label><span data-i18n="label_doc_name">Tên tài liệu hiển thị</span> <span class="required-star">*</span></label>
+                            <input type="text" id="docNameInput" placeholder="Tự động điền khi chọn tệp hoặc nhập tùy chỉnh..." required>
+                        </div>
+                        <div class="form-group">
+                            <label><span data-i18n="label_upload_date">Ngày tải lên</span> <span class="required-star">*</span></label>
+                            <input type="datetime-local" id="docUploadDateInput" class="datetime-picker" required>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Phân loại & Phạm vi phân quyền RBAC -->
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label data-i18n="label_category">Phân loại danh mục</label>
+                            <input type="text" id="docCategoryInput" placeholder="Ví dụ: Quy chế, Hướng dẫn, Kế toán">
+                        </div>
+                        <div class="form-group">
+                            <label><span data-i18n="label_scope">Phạm vi phân quyền</span> <span class="required-star">*</span></label>
+                            <select id="docAccessScopeSelect" class="form-select">
+                                <option value="Public" selected id="scopeOptPublic">Công khai</option>
+                                <option value="Restricted" id="scopeOptRestricted">Giới hạn theo vai trò</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Checkbox chọn vai trò khi Restricted -->
+                    <div class="form-group" id="allowedRolesGroup" style="display: none;">
+                        <label data-i18n="label_roles_select">Vai trò được phép truy cập tài liệu này:</label>
+                        <div class="roles-checkbox-group">
+                            <label class="checkbox-pill"><input type="checkbox" name="docRole" value="Officer" checked> Officer</label>
+                            <label class="checkbox-pill"><input type="checkbox" name="docRole" value="Elite" checked> Elite</label>
+                            <label class="checkbox-pill"><input type="checkbox" name="docRole" value="Admin" checked> Admin</label>
+                        </div>
+                    </div>
+
+                    <!-- OCR & Vision Options -->
+                    <div class="form-options">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="uploadOcrToggle" checked>
+                            <span data-i18n="label_ocr">Bật OCR trích xuất chữ trong ảnh scan (Tesseract)</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="uploadVisionToggle" checked>
+                            <span data-i18n="label_vision">Bật Vision AI phân tích biểu đồ & giao diện (Qwen-VL)</span>
+                        </label>
+                    </div>
+
+                    <!-- Ingestion Progress -->
+                    <div class="ingest-progress-container" id="ingestProgressContainer" style="display:none;">
+                        <div class="progress-info">
+                            <span id="progressStatusLabel" data-i18n="progress_ingesting">Đang phân đoạn và nhúng Vector...</span>
+                            <span id="progressPercentLabel">0%</span>
+                        </div>
+                        <div class="progress-bar-track">
+                            <div class="progress-bar-fill" id="progressBarFill" style="width: 0%;"></div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="submit-upload-btn" id="submitUploadBtn">
+                        <span data-i18n="submit_upload_btn">Xác nhận nạp tài liệu</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================================================
+         MODAL 3: BẢNG NỔI CHỈNH SỬA TÀI LIỆU
+         ========================================================================== -->
+    <div class="modal-backdrop" id="editDocModal">
+        <div class="modal-dialog edit-dialog resizable-modal">
+            <!-- 8 Resize handles -->
+            <div class="edge-resize-handle handle-top"></div>
+            <div class="edge-resize-handle handle-bottom"></div>
+            <div class="edge-resize-handle handle-left"></div>
+            <div class="edge-resize-handle handle-right"></div>
+            <div class="edge-resize-handle handle-top-left"></div>
+            <div class="edge-resize-handle handle-top-right"></div>
+            <div class="edge-resize-handle handle-bottom-left"></div>
+            <div class="edge-resize-handle handle-bottom-right"></div>
+
+            <div class="modal-header">
+                <div class="modal-title-wrap">
+                    <span class="edit-badge-icon">✏️</span>
+                    <div>
+                        <h2 data-i18n="edit_modal_title">Chỉnh sửa tài liệu</h2>
+                        <p class="modal-subtitle" id="editDocSubTitle">ID: #</p>
+                    </div>
+                </div>
+                <button class="sidebar-icon-btn" id="closeEditDocModalBtn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="edit-modal-body">
+                <form id="editDocForm" class="upload-form">
+                    <input type="hidden" id="editDocId">
+                    <div class="form-group">
+                        <label data-i18n="label_doc_name">Tên tài liệu</label>
+                        <input type="text" id="editDocNameInput" required>
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="label_category">Phân loại</label>
+                        <input type="text" id="editDocCategoryInput">
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="label_scope">Phạm vi phân quyền</label>
+                        <select id="editDocAccessScopeSelect" class="form-select">
+                            <option value="Public" id="editScopeOptPublic">Công khai</option>
+                            <option value="Restricted" id="editScopeOptRestricted">Giới hạn theo vai trò</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="editAllowedRolesGroup" style="display: none;">
+                        <label data-i18n="label_roles_select">Vai trò được phép truy cập:</label>
+                        <div class="roles-checkbox-group">
+                            <label class="checkbox-pill"><input type="checkbox" name="editDocRole" value="Officer"> Officer</label>
+                            <label class="checkbox-pill"><input type="checkbox" name="editDocRole" value="Elite"> Elite</label>
+                            <label class="checkbox-pill"><input type="checkbox" name="editDocRole" value="Admin"> Admin</label>
+                        </div>
+                    </div>
+                    <button type="submit" class="submit-upload-btn" id="submitEditBtn">
+                        <span data-i18n="save_changes_btn">Lưu thay đổi</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Citations Details Preview Modal -->
+    <div class="modal-backdrop" id="citationModal" style="display: none;">
+        <div class="modal-dialog citation-dialog">
+            <div class="modal-header">
+                <div class="modal-title-wrap">
+                    <span class="citation-badge-icon">📖</span>
+                    <div>
+                        <h2 id="citationModalTitle" data-i18n="citations_title">Chi tiết trích dẫn nguồn</h2>
+                        <p class="modal-subtitle" id="citationModalSource">Tài liệu tham chiếu</p>
+                    </div>
+                </div>
+                <button class="sidebar-icon-btn" id="closeCitationModalBtn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="citation-modal-body" id="citationModalBody"></div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Scripts -->
+    <script src="./js/markdown.js"></script>
+    <script type="module" src="./js/app.js"></script>
+</body>
+</html>

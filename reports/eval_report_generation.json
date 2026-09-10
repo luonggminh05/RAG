@@ -1,0 +1,45 @@
+{
+  "suite": "Generation Evaluation",
+  "total_cases": 3,
+  "averages": {
+    "faithfulness": 1.0,
+    "hallucination_rate": 0.0,
+    "citation_precision": 1.0,
+    "latency_seconds": 8.2923
+  },
+  "details": [
+    {
+      "id": "gen_001",
+      "query": "Quy trình tạo PYC trên hệ thống gAMSPro như thế nào?",
+      "scores": {
+        "faithfulness": 1.0,
+        "hallucination_rate": 0.0,
+        "citation_precision": 1.0,
+        "latency_seconds": 8.201
+      },
+      "output_preview": "Quy trình tạo PYC trên hệ thống gAMSPro gồm các bước: Bước 1: Vào menu Quản lý mua sắm -> Chọn Tạo mới PYC. Bước 2: Nhập"
+    },
+    {
+      "id": "gen_002",
+      "query": "Hạn mức phê duyệt mua sắm của Trưởng phòng là bao nhiêu?",
+      "scores": {
+        "faithfulness": 1.0,
+        "hallucination_rate": 0.0,
+        "citation_precision": 1.0,
+        "latency_seconds": 8.332
+      },
+      "output_preview": "Theo Quy chế tài chính nội bộ, Trưởng phòng có thẩm quyền phê duyệt các gói mua sắm tài sản có giá trị dưới 50 triệu đồn"
+    },
+    {
+      "id": "gen_003",
+      "query": "Biên bản bàn giao tài sản cần chữ ký của những ai?",
+      "scores": {
+        "faithfulness": 1.0,
+        "hallucination_rate": 0.0,
+        "citation_precision": 1.0,
+        "latency_seconds": 8.344
+      },
+      "output_preview": "Biên bản bàn giao tài sản cần có chữ ký của 3 bên: Bên giao, Bên nhận và Đại diện Phòng Quản lý tài sản."
+    }
+  ]
+}
