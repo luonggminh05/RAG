@@ -12,14 +12,6 @@ from app.ai.agent.agentic_rag.nodes.retrieve_node import retrieve_rag_node
 from app.ai.agent.agentic_rag.state import AgenticRagState
 
 
-def should_generate_or_fallback(state: AgenticRagState) -> str:
-    """Kiểm tra có tài liệu hợp lệ hay không trước khi gửi tới Generator."""
-    is_relevant = state.get("is_relevant", False) if isinstance(state, dict) else getattr(state, "is_relevant", False)
-    if is_relevant:
-        return "generator_node"
-    return "generator_node"
-
-
 # Khởi tạo Graph
 graph = StateGraph(AgenticRagState)
 

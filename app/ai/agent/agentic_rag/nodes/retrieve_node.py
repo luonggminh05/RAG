@@ -8,7 +8,6 @@ import logging
 from typing import Any, Dict
 
 from app.ai.agent.agentic_rag.state import AgenticRagState
-from app.routers.dependencies import get_vector_retriever
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +17,7 @@ async def retrieve_rag_node(state: AgenticRagState) -> Dict[str, Any]:
     Node 1 trong Fast Pipeline:
     Truy vấn Vector DB + Fulltext Search (RRF) kết hợp Reranker.
     """
+    from app.routers.dependencies import get_vector_retriever
     user_query = (
         state.get("user_query", "")
         if isinstance(state, dict)
