@@ -62,6 +62,15 @@ class ChatService:
             logger.debug(f"[CHAT] Auto-generate title for conv={conversation_id} skipped: {ex}")
             self.repository.update_conversation_title(conversation_id, fallback_title)
 
+    @staticmethod
+    async def _stream_text_adaptive(text: str) -> AsyncGenerator[str, None]:
+        """Phát token từng từ mượt mà (natural pacing) thay vì nguyên cụm."""
+        tokens = re.findall(r"\S+\s*|\s+", text)
+        for token in tokens:
+            yield f"event: token\ndata: {json.dumps({'text': token}, ensure_ascii=False)}\n\n"
+            delay = 0.04 if any(p in token for p in ".!?,;:\n") else (0.015 if len(token) > 4 else 0.008)
+            await asyncio.sleep(delay)
+
     async def stream_chat(
         self,
         message: str,
@@ -75,17 +84,61 @@ class ChatService:
         top_k: Optional[int] = None,
         is_retry: bool = False,
         retry_message_id: Optional[int] = None,
+        is_edit: bool = False,
+        edit_message_id: Optional[int] = None,
     ) -> AsyncGenerator[str, None]:
         """
-        Luồng SSE Stream xử lý phản hồi RAG tích hợp Agentic RAG Graph (LangGraph):
+        Luồng SSE Stream xử lý phản hồi RAG tích hợp Fast Pipeline:
         - Supervisor Intent Router (RAG vs Chitchat vs Out-of-Scope)
         - Langfuse Tracing Context & Observability
         - Query Contextualization & Multi-turn Conversation
         - Vision Analysis (Multimodal Screenshots)
-        - Grader Node & Self-Correction
-        - DeepSeek-R1 <think> Chain-of-Thought Tag Parsing
-        - Retry & Branching conversation support
+        - Dynamic Top-K Query Analysis & Cross-Encoder Reranker
+        - Edit Message & Retry Branching support
+        - Token-level streaming & Natural pacing
         """
+        identifier = user_id or (str(conversation_id) if conversation_id else None) or "anonymous"
+        try:
+            async for sse_event in self._stream_chat_internal(
+                message=message,
+                images=images,
+                user_roles=user_roles,
+                user_department=user_department,
+                conversation_id=conversation_id,
+                user_id=user_id,
+                model=model,
+                enable_vision=enable_vision,
+                top_k=top_k,
+                is_retry=is_retry,
+                retry_message_id=retry_message_id,
+                is_edit=is_edit,
+                edit_message_id=edit_message_id,
+            ):
+                yield sse_event
+        finally:
+            if getattr(settings, "rate_limit_enabled", False):
+                try:
+                    from app.security.rate_limiter import get_rate_limiter
+                    await get_rate_limiter().release(identifier)
+                except Exception as rel_err:
+                    logger.debug(f"[CHAT] Rate limiter release error: {rel_err}")
+
+    async def _stream_chat_internal(
+        self,
+        message: str,
+        images: Optional[List[ChatImageInput]] = None,
+        user_roles: Optional[str] = None,
+        user_department: Optional[str] = None,
+        conversation_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        model: Optional[str] = None,
+        enable_vision: bool = True,
+        top_k: Optional[int] = None,
+        is_retry: bool = False,
+        retry_message_id: Optional[int] = None,
+        is_edit: bool = False,
+        edit_message_id: Optional[int] = None,
+    ) -> AsyncGenerator[str, None]:
         # 1. Resolve or Create Conversation in DB
         conv_id_int: Optional[int] = None
         if conversation_id and str(conversation_id).isdigit():
@@ -161,13 +214,20 @@ class ChatService:
             yield "event: chat_ended\ndata: {}\n\n"
             return
 
-        # 4. Save User Message & Conversation History Handling (with Retry Support)
+        # 4. Save User Message & Conversation History Handling (with Edit & Retry Support)
         prior_history: List[Dict[str, Any]] = []
         try:
-            if is_retry and retry_message_id is not None:
+            if is_edit and edit_message_id is not None:
+                self.repository.update_message_content(edit_message_id, message or "[Hình ảnh]")
+                self.repository.truncate_messages_after(conv_id_int, edit_message_id)
+                all_prior = self.repository.get_messages_up_to(conv_id_int, edit_message_id, limit=6)
+                prior_history = [m for m in all_prior if m.get("id") != edit_message_id]
+                logger.info(f"[CHAT] Handled edit for message_id={edit_message_id}, conv={conv_id_int}")
+            elif is_retry and retry_message_id is not None:
                 # Xóa các tin nhắn sau mốc retry_message_id
                 self.repository.truncate_messages_after(conv_id_int, retry_message_id)
-                prior_history = self.repository.get_messages_up_to(conv_id_int, retry_message_id, limit=6)
+                all_prior = self.repository.get_messages_up_to(conv_id_int, retry_message_id, limit=6)
+                prior_history = [m for m in all_prior if m.get("id") != retry_message_id]
                 logger.info(f"[CHAT] Handled retry for message_id={retry_message_id}, conv={conv_id_int}")
             else:
                 self.repository.add_message(conv_id_int, "user", message or "[Hình ảnh]")
@@ -187,10 +247,11 @@ class ChatService:
             if not has_images:
                 yield "event: chat_started\ndata: {}\n\n"
             ans_text = intent_res.response or "Xin chào! Tôi có thể hỗ trợ gì cho bạn?"
-            yield f"event: token\ndata: {json.dumps({'text': ans_text}, ensure_ascii=False)}\n\n"
+            async for sse_event in self._stream_text_adaptive(ans_text):
+                yield sse_event
             yield "event: chat_ended\ndata: {}\n\n"
             try:
-                self.repository.add_message(conv_id_int, "assistant", ans_text)
+                self.repository.add_message(conv_id_int, "assistant", ans_text, trace_id=str(uuid.uuid4()))
                 self.repository.touch_conversation(conv_id_int)
             except Exception:
                 pass
@@ -241,6 +302,7 @@ class ChatService:
             "vision_context": vision_ctx,
             "selected_model": selected_model,
             "rewritten_query": None,
+            "top_k": top_k,
         }
 
         # 7. Hàng đợi bất đồng bộ & Worker xử lý Graph
@@ -265,12 +327,9 @@ class ChatService:
                     # 7.1. Cập nhật node & trạng thái suy nghĩ
                     if event_type == "on_chain_start":
                         name = event.get("name", "")
-                        if name == "tools_node":
-                            current_active_node = "tools_node"
-                            await queue.put(("thinking", "Đang tra cứu tài liệu quy chế, chính sách liên quan...\n"))
-                        elif name == "grader_node":
-                            current_active_node = "grader_node"
-                            await queue.put(("thinking", "Đang kiểm tra và đánh giá độ chính xác của tài liệu thu thập được...\n"))
+                        if name == "retrieve_rag_node":
+                            current_active_node = "retrieve_rag_node"
+                            await queue.put(("thinking", "Đang tra cứu và truy xuất tài liệu quy chế, chính sách liên quan...\n"))
                         elif name == "generator_node":
                             current_active_node = "generator_node"
                             await queue.put(("thinking", "Đang tổng hợp thông tin và định dạng câu trả lời...\n"))
@@ -343,8 +402,8 @@ class ChatService:
                 footer = CitationHelper.build_footer(final_citations) if final_citations else ""
                 full_saved_message = clean_answer + (f"\n\n{footer}" if footer else "")
 
-                # Lưu tin nhắn trợ lý vào DB
-                self.repository.add_message(conv_id_int, "assistant", full_saved_message)
+                # Lưu tin nhắn trợ lý vào DB kèm trace_id
+                self.repository.add_message(conv_id_int, "assistant", full_saved_message, trace_id=trace_id)
                 self.repository.touch_conversation(conv_id_int)
 
                 await queue.put(("citations", (final_citations, footer)))

@@ -18,6 +18,8 @@ class ChatRequest(BaseModel):
     top_k: Optional[int] = Field(default=None, ge=1, le=50, description="Số lượng trích dẫn RAG tối đa")
     is_retry: bool = Field(default=False, description="Đánh dấu câu hỏi là retry/thử lại")
     retry_message_id: Optional[int] = Field(default=None, description="ID tin nhắn cần retry")
+    is_edit: bool = Field(default=False, description="Đánh dấu câu hỏi là chỉnh sửa tin nhắn cũ")
+    edit_message_id: Optional[int] = Field(default=None, description="ID tin nhắn user cần chỉnh sửa")
 
     model_config = {"populate_by_name": True}
 
@@ -63,3 +65,8 @@ class FeedbackResponse(BaseModel):
     message_id: int
     rating: str
     status: str = "success"
+
+class TranscribeResponse(BaseModel):
+    text: str
+    status: str = "success"
+

@@ -1,0 +1,65 @@
+[
+  {
+    "id": "rag_case_01",
+    "query": "Quy trình đề xuất mua sắm tài sản cố định gồm những bước nào?",
+    "expected_intent": "rag",
+    "expected_category": "exhaustive",
+    "expected_keywords": ["đề xuất", "mua sắm", "bước", "phê duyệt"],
+    "min_top_k": 8
+  },
+  {
+    "id": "rag_case_02",
+    "query": "Ai là người có thẩm quyền phê duyệt tờ trình mua sắm dưới 50 triệu?",
+    "expected_intent": "rag",
+    "expected_category": "specific",
+    "expected_keywords": ["thẩm quyền", "phê duyệt", "hạn mức"],
+    "max_top_k": 5
+  },
+  {
+    "id": "rag_case_03",
+    "query": "Liệt kê tất cả các chứng từ cần có trong hồ sơ nghiệm thu thanh toán hợp đồng",
+    "expected_intent": "rag",
+    "expected_category": "exhaustive",
+    "expected_keywords": ["chứng từ", "nghiệm thu", "thanh toán", "hồ sơ"],
+    "min_top_k": 10
+  },
+  {
+    "id": "rag_case_04",
+    "query": "Thời hạn giải quyết yêu cầu điều chuyển tài sản nội bộ là bao nhiêu ngày?",
+    "expected_intent": "rag",
+    "expected_category": "specific",
+    "expected_keywords": ["thời hạn", "điều chuyển", "ngày"],
+    "max_top_k": 5
+  },
+  {
+    "id": "rag_case_05",
+    "query": "Quy chế bảo mật thông tin và phân quyền truy cập dữ liệu của các phòng ban",
+    "expected_intent": "rag",
+    "expected_category": "standard",
+    "expected_keywords": ["bảo mật", "phân quyền", "truy cập"]
+  },
+  {
+    "id": "chitchat_case_01",
+    "query": "Xin chào, bạn có thể giúp gì cho tôi?",
+    "expected_intent": "chitchat",
+    "expected_category": "standard"
+  },
+  {
+    "id": "chitchat_case_02",
+    "query": "Cảm ơn bạn rất nhiều nhé!",
+    "expected_intent": "chitchat",
+    "expected_category": "standard"
+  },
+  {
+    "id": "out_of_scope_case_01",
+    "query": "Thời tiết hôm nay ở Hà Nội có mưa không?",
+    "expected_intent": "out_of_scope",
+    "expected_category": "standard"
+  },
+  {
+    "id": "out_of_scope_case_02",
+    "query": "Cách nấu món phở bò truyền thống ngon nhất",
+    "expected_intent": "out_of_scope",
+    "expected_category": "standard"
+  }
+]

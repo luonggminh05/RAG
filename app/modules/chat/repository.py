@@ -138,7 +138,13 @@ class ChatRepository:
 
     # ── Message Operations ──
 
-    def add_message(self, conversation_id: Any, role: str, content: str) -> int:
+    def add_message(
+        self,
+        conversation_id: Any,
+        role: str,
+        content: str,
+        trace_id: Optional[str] = None,
+    ) -> int:
         int_id = self._to_int_id(conversation_id)
         if int_id is None:
             raise ValueError(f"Invalid conversation_id: {conversation_id}")
@@ -148,6 +154,7 @@ class ChatRepository:
                 conversation_id=int_id,
                 role=role,
                 content=content,
+                trace_id=trace_id,
                 created_at=datetime.utcnow(),
             )
             db.add(msg)
@@ -157,6 +164,27 @@ class ChatRepository:
         except Exception:
             db.rollback()
             raise
+        finally:
+            db.close()
+
+    def get_message(self, message_id: Any) -> Optional[Dict[str, Any]]:
+        """Lấy chi tiết 1 tin nhắn theo message_id (gồm trace_id)."""
+        msg_id = self._to_int_id(message_id)
+        if msg_id is None:
+            return None
+        db: Session = SessionLocal()
+        try:
+            msg = db.query(ChatMessage).filter(ChatMessage.id == msg_id).first()
+            if not msg:
+                return None
+            return {
+                "id": msg.id,
+                "conversation_id": msg.conversation_id,
+                "role": msg.role,
+                "content": msg.content,
+                "trace_id": getattr(msg, "trace_id", None),
+                "created_at": msg.created_at.isoformat() if msg.created_at else None,
+            }
         finally:
             db.close()
 
@@ -199,6 +227,25 @@ class ChatRepository:
         db: Session = SessionLocal()
         try:
             return db.query(ChatMessage).filter(ChatMessage.conversation_id == int_id).count()
+        finally:
+            db.close()
+
+    def update_message_content(self, message_id: Any, content: str) -> bool:
+        """Cập nhật nội dung của một tin nhắn cụ thể (Edit message)."""
+        msg_id = self._to_int_id(message_id)
+        if msg_id is None:
+            return False
+        db: Session = SessionLocal()
+        try:
+            msg = db.query(ChatMessage).filter(ChatMessage.id == msg_id).first()
+            if msg:
+                msg.content = content
+                db.commit()
+                return True
+            return False
+        except Exception:
+            db.rollback()
+            raise
         finally:
             db.close()
 

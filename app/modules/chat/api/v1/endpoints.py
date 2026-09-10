@@ -1,7 +1,7 @@
 import logging
 import httpx
 from typing import Optional, List
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, File, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.core.config import settings, AVAILABLE_MODELS
@@ -15,10 +15,12 @@ from app.modules.chat.api.v1.schemas import (
     ModelListResponse,
     FeedbackRequest,
     FeedbackResponse,
+    TranscribeResponse,
 )
 from app.modules.chat.service import ChatService
 from app.modules.chat.repository import ChatRepository
-from app.routers.dependencies import get_chat_service, get_chat_repository
+from app.modules.chat.transcribe_service import TranscribeService
+from app.routers.dependencies import get_chat_service, get_chat_repository, get_transcribe_service
 from app.llmops.langfuse import log_feedback_score
 
 logger = logging.getLogger(__name__)
@@ -83,6 +85,25 @@ async def chat_stream(
     roles = request.user_roles or x_user_roles
     dept = request.user_department or x_user_department
 
+    if getattr(settings, "rate_limit_enabled", False):
+        from app.security.rate_limiter import get_rate_limiter
+        identifier = request.user_id or request.conversation_id or "anonymous"
+        allowed, limit, remaining, reset_secs, err_msg = await get_rate_limiter().check_and_acquire(
+            identifier=identifier,
+            user_roles=roles,
+        )
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail=err_msg,
+                headers={
+                    "Retry-After": str(reset_secs),
+                    "X-RateLimit-Limit": str(limit),
+                    "X-RateLimit-Remaining": "0",
+                    "X-RateLimit-Reset": str(reset_secs),
+                },
+            )
+
     generator = chat_service.stream_chat(
         message=request.message,
         images=request.images,
@@ -95,6 +116,8 @@ async def chat_stream(
         top_k=request.top_k,
         is_retry=request.is_retry,
         retry_message_id=request.retry_message_id,
+        is_edit=request.is_edit,
+        edit_message_id=request.edit_message_id,
     )
 
     return StreamingResponse(
@@ -198,11 +221,15 @@ async def submit_message_feedback(
             rating=normalized_rating,
             comment=request.comment,
         )
-        # Log to Langfuse
+        # Log to Langfuse with real trace_id
+        msg_record = repository.get_message(message_id)
+        trace_id = msg_record.get("trace_id") if msg_record else None
+
         log_feedback_score(
             name="user_feedback",
             value=score_val,
             comment=request.comment,
+            trace_id=trace_id,
             observation_id=str(message_id),
         )
         return FeedbackResponse(
@@ -214,3 +241,23 @@ async def submit_message_feedback(
     except Exception as ex:
         logger.error(f"[FEEDBACK] Error saving feedback for message={message_id}: {ex}")
         raise HTTPException(status_code=500, detail=f"Failed to submit feedback: {str(ex)}")
+
+
+@router.post("/transcribe", response_model=TranscribeResponse)
+async def transcribe_audio(
+    file: UploadFile = File(...),
+    transcribe_service: TranscribeService = Depends(get_transcribe_service),
+):
+    """
+    Chuyển đổi âm thanh ghi âm từ microphone thành văn bản tiếng Việt.
+    Hỗ trợ các định dạng: webm, wav, mp3, mp4, ogg.
+    """
+    try:
+        audio_bytes = await file.read()
+        content_type = file.content_type or "audio/webm"
+        text = await transcribe_service.transcribe(audio_bytes=audio_bytes, content_type=content_type)
+        return TranscribeResponse(text=text, status="success")
+    except Exception as ex:
+        logger.error(f"[TRANSCRIBE] Audio transcription error: {ex}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(ex)}")
+

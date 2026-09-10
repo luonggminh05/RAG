@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     llm_temperature: float = Field(default=0.2, alias="LLM_TEMPERATURE")
     llm_max_tokens: int = Field(default=2048, alias="LLM_MAX_TOKENS")
 
+    # --- Gemini & Multimodal STT Settings ---
+    gemini_api_key: Optional[str] = Field(default=None, alias="GEMINI_API_KEY")
+    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
+
     # --- Embedding Settings (TEI Server) ---
     tei_url: str = Field(default="http://localhost:8080", alias="TEI_URL")
     embedding_dims: int = Field(default=1024, alias="EMBEDDING_DIMS")
@@ -136,13 +140,24 @@ class Settings(BaseSettings):
             return v
         return ["*"]
 
-    # --- Rate Limiting & User Roles (RBAC) ---
+    # --- Rate Limiting & User Roles (RBAC 6-Tier) ---
     rate_limit_enabled: bool = Field(default=False, alias="RATE_LIMIT_ENABLED")
-    rate_limit_officer_rpm: int = Field(default=60, alias="RATE_LIMIT_OFFICER_RPM")
-    rate_limit_elite_rpm: int = Field(default=120, alias="RATE_LIMIT_ELITE_RPM")
-    rate_limit_admin_rpm: int = Field(default=240, alias="RATE_LIMIT_ADMIN_RPM")
+    rate_limit_master_rpm: int = Field(default=240, alias="RATE_LIMIT_MASTER_RPM")
+    rate_limit_coleader_rpm: int = Field(default=180, alias="RATE_LIMIT_COLEADER_RPM")
+    rate_limit_tier3_rpm: int = Field(default=120, alias="RATE_LIMIT_TIER3_RPM")
+    rate_limit_elite_rpm: int = Field(default=60, alias="RATE_LIMIT_ELITE_RPM")
+    rate_limit_member_rpm: int = Field(default=30, alias="RATE_LIMIT_MEMBER_RPM")
+    rate_limit_recruit_rpm: int = Field(default=20, alias="RATE_LIMIT_RECRUIT_RPM")
+
+    chat_concurrency_master: int = Field(default=15, alias="CHAT_CONCURRENCY_MASTER")
+    chat_concurrency_coleader: int = Field(default=10, alias="CHAT_CONCURRENCY_COLEADER")
+    chat_concurrency_tier3: int = Field(default=5, alias="CHAT_CONCURRENCY_TIER3")
+    chat_concurrency_elite: int = Field(default=3, alias="CHAT_CONCURRENCY_ELITE")
+    chat_concurrency_member: int = Field(default=2, alias="CHAT_CONCURRENCY_MEMBER")
+    chat_concurrency_recruit: int = Field(default=1, alias="CHAT_CONCURRENCY_RECRUIT")
+
     valid_roles: List[str] = Field(
-        default=["Admin", "Elite", "Officer"],
+        default=["Master", "Admin", "Co-Leader", "Officer", "Staff", "Raid Leader", "Elite", "Member", "Recruit"],
         alias="VALID_ROLES"
     )
 

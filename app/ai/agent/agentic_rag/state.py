@@ -19,3 +19,5 @@ class AgenticRagState(TypedDict):
     vision_context: Optional[str]
     selected_model: Optional[str]
     rewritten_query: Optional[str]
+    top_k: Optional[int]
+

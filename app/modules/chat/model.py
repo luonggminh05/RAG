@@ -35,6 +35,7 @@ class ChatMessage(Base):
     )
     role = Column("Role", String(20), nullable=True)   # 'user' | 'assistant' | 'system'
     content = Column("Content", UnicodeText, nullable=True)
+    trace_id = Column("TraceId", String(100), nullable=True)
     created_at = Column("CreatedAt", DateTime, nullable=True, default=datetime.utcnow)
 
     conversation = relationship("Conversation", back_populates="messages")

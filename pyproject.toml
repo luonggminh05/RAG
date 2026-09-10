@@ -36,6 +36,7 @@ dependencies = [
     "rich>=15.0.0",
     "pytest>=9.1.1",
     "langfuse-langchain>=2.60.10.1",
+    "sentence-transformers>=2.7.0",
 ]
 
 [tool.uv]

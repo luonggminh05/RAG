@@ -2,6 +2,7 @@ from app.modules.document.repository import DocumentRepository
 from app.modules.document.service import DocumentService
 from app.modules.chat.repository import ChatRepository
 from app.modules.chat.service import ChatService
+from app.modules.chat.transcribe_service import TranscribeService
 from app.ai.rag.embedding.service import TeiEmbeddingService
 from app.ai.vision.ocr_service import TesseractOcrService
 from app.ai.vision.vision_service import VisionService
@@ -29,6 +30,8 @@ _chat_service = ChatService(
     retriever=_vector_retriever,
     vision_service=_vision_service,
 )
+_transcribe_service = TranscribeService()
+
 
 def get_document_repository() -> DocumentRepository:
     return _document_repository
@@ -53,6 +56,10 @@ def get_document_service() -> DocumentService:
 
 def get_chat_service() -> ChatService:
     return _chat_service
+
+def get_transcribe_service() -> TranscribeService:
+    return _transcribe_service
+
 
 # Aliases for backwards compatibility with legacy Rag dependency imports
 get_repository = get_document_repository

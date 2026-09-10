@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from app.core.config import settings
 from app.llmops.factory import get_chat_model
 from app.shared.utils.action_classifier import ActionKindClassifier
+from app.ai.agent.supervisor.schemas import RouterOutput, IntentType
 
 logger = logging.getLogger(__name__)
 
@@ -135,30 +136,47 @@ class IntentClassifier:
         if len(clean_query.split()) >= 6 or (history and len(history) > 0):
             return IntentResult(intent="rag", confidence=0.85, reasoning="heuristic_length_or_history")
 
-        # ── Step 2: Lightweight LLM Router (cho câu ngắn mơ hồ, timeout 1.2s) ──
+        # ── Step 2: Lightweight Structured Output LLM Router (cho câu ngắn mơ hồ, timeout 2.0s) ──
         try:
             llm = get_chat_model(model=self.model_id)
             router_prompt = (
-                "Phân loại câu hỏi của người dùng vào đúng 1 trong 3 nhóm sau:\n"
-                "- 'chitchat': Lời chào hỏi, cảm ơn, khen ngợi, giao tiếp thân mật.\n"
-                "- 'out_of_scope': Hỏi về thời tiết, bóng đá, nấu ăn, giải trí, kiến thức không liên quan công việc văn phòng/phần mềm/quy chế.\n"
-                "- 'rag': Câu hỏi cần tra cứu tài liệu, thủ tục, quy định, hướng dẫn sử dụng phần mềm, công việc.\n"
-                "Chỉ trả về đúng 1 từ: chitchat, out_of_scope, hoặc rag."
+                "Bạn là hệ thống điều phối phân loại ý định người dùng (Supervisor Intent Router).\n"
+                "Phân loại câu hỏi của người dùng vào đúng 1 trong 3 nhóm:\n"
+                "- 'rag': Câu hỏi liên quan công việc, quy trình, quy định, chính sách nội bộ, hướng dẫn hệ thống phần mềm.\n"
+                "- 'chitchat': Lời chào hỏi, cảm ơn, khen ngợi, giao tiếp xã giao.\n"
+                "- 'out_of_scope': Câu hỏi ngoài phạm vi nghiệp vụ (thời tiết, giải trí, thể thao, nấu ăn, tán gẫu không liên quan).\n"
+                "Hãy trả về đúng cấu trúc Pydantic RouterOutput gồm intent, confidence, reasoning và rewritten_query."
             )
-            resp = await asyncio.wait_for(
-                llm.ainvoke([
+            structured_llm = llm.with_structured_output(RouterOutput)
+            router_res: RouterOutput = await asyncio.wait_for(
+                structured_llm.ainvoke([
                     SystemMessage(content=router_prompt),
                     HumanMessage(content=f"Câu hỏi: {clean_query}")
                 ]),
-                timeout=1.2,
+                timeout=2.0,
             )
-            raw_cls = (resp.content if hasattr(resp, "content") else str(resp)).strip().lower()
-            if "chitchat" in raw_cls:
-                return IntentResult(intent="chitchat", response=GREETING_RESPONSE, confidence=0.9, reasoning="llm_chitchat")
-            elif "out_of_scope" in raw_cls:
-                return IntentResult(intent="out_of_scope", response=OUT_OF_SCOPE_RESPONSE, confidence=0.9, reasoning="llm_out_of_scope")
+
+            intent_val = router_res.intent.value if hasattr(router_res.intent, "value") else str(router_res.intent)
+            if intent_val == IntentType.CHITCHAT.value:
+                return IntentResult(
+                    intent="chitchat",
+                    response=GREETING_RESPONSE,
+                    confidence=router_res.confidence,
+                    reasoning=f"structured_llm: {router_res.reasoning}",
+                )
+            elif intent_val == IntentType.OUT_OF_SCOPE.value:
+                return IntentResult(
+                    intent="out_of_scope",
+                    response=OUT_OF_SCOPE_RESPONSE,
+                    confidence=router_res.confidence,
+                    reasoning=f"structured_llm: {router_res.reasoning}",
+                )
             else:
-                return IntentResult(intent="rag", confidence=0.9, reasoning="llm_rag")
+                return IntentResult(
+                    intent="rag",
+                    confidence=router_res.confidence,
+                    reasoning=f"structured_llm: {router_res.reasoning}",
+                )
         except Exception as ex:
-            logger.debug(f"[INTENT] LLM classifier fallback to 'rag': {ex}")
+            logger.debug(f"[INTENT] Structured LLM classifier fallback to 'rag': {ex}")
             return IntentResult(intent="rag", confidence=0.7, reasoning="fallback_rag")

@@ -1,5 +1,6 @@
 import json
 import logging
+from contextvars import ContextVar
 from typing import Optional, Any, List
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
@@ -14,16 +15,26 @@ def _get_retriever():
         _retriever = get_vector_retriever()
     return _retriever
 
-_rbac_context: dict[str, Any] = {"user_roles": None, "user_department": None, "chat_history": None}
+
+_user_roles_var: ContextVar[Optional[str]] = ContextVar("user_roles", default=None)
+_user_department_var: ContextVar[Optional[str]] = ContextVar("user_department", default=None)
+_chat_history_var: ContextVar[Optional[list]] = ContextVar("chat_history", default=None)
 
 def set_rbac_context(
     user_roles: Optional[str] = None,
     user_department: Optional[str] = None,
     chat_history: Optional[list] = None,
 ) -> None:
-    _rbac_context["user_roles"] = user_roles
-    _rbac_context["user_department"] = user_department
-    _rbac_context["chat_history"] = chat_history
+    _user_roles_var.set(user_roles)
+    _user_department_var.set(user_department)
+    _chat_history_var.set(chat_history)
+
+def get_rbac_context() -> dict:
+    return {
+        "user_roles": _user_roles_var.get(),
+        "user_department": _user_department_var.get(),
+        "chat_history": _chat_history_var.get(),
+    }
 
 class SearchPolicyDocsInput(BaseModel):
     query: str = Field(description="Câu hỏi hoặc từ khóa tra cứu quy chế, tài liệu, HDSD")
@@ -35,7 +46,7 @@ async def search_policy_and_manual_docs(query: str, top_k: int = 5) -> str:
     try:
         retriever = _get_retriever()
         effective_query = query
-        history = _rbac_context.get("chat_history")
+        history = _chat_history_var.get()
         if history:
             try:
                 from app.ai.rag.query.contextualizer import QueryContextualizer
@@ -48,8 +59,8 @@ async def search_policy_and_manual_docs(query: str, top_k: int = 5) -> str:
         result = await retriever.retrieve_context(
             query=effective_query,
             top_k=top_k,
-            user_roles=_rbac_context.get("user_roles"),
-            user_department=_rbac_context.get("user_department"),
+            user_roles=_user_roles_var.get(),
+            user_department=_user_department_var.get(),
         )
         documents = result.get("documents", [[]])[0] if result.get("documents") else []
         citations = result.get("citations", [[]])[0] if result.get("citations") else []

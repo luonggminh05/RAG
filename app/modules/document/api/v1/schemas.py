@@ -1,5 +1,12 @@
+from enum import Enum
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
+
+class DepartmentEnum(str, Enum):
+    ALL_DEPT = "all_dept"
+    HAU_CAN = "hau_can"
+    NHAN_SU = "nhan_su"
+    CHIEN_THUAT = "chien_thuat"
 
 class AddDocumentsRequest(BaseModel):
     documents: List[str]
@@ -47,12 +54,14 @@ class CreateDocumentMetadataRequest(BaseModel):
     uploaded_by: Optional[str] = None
     tenant_id: Optional[int] = None
     allowed_roles: List[str] = Field(default_factory=list)
+    target_department: Optional[DepartmentEnum] = DepartmentEnum.ALL_DEPT
 
 class UpdateDocumentMetadataRequest(BaseModel):
     document_name: Optional[str] = None
     category: Optional[str] = None
     access_scope: Optional[str] = None
     allowed_roles: Optional[List[str]] = None
+    target_department: Optional[DepartmentEnum] = None
 
 class UpdateDocumentStatusRequest(BaseModel):
     status: str

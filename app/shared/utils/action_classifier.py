@@ -61,7 +61,8 @@ class ActionKindClassifier:
                 builder.append(ch)
 
         composed = unicodedata.normalize('NFC', "".join(builder))
-        return re.sub(r'\s+', ' ', composed).strip()
+        clean_punct = re.sub(r'[^\w\s]', ' ', composed)
+        return re.sub(r'\s+', ' ', clean_punct).strip()
 
     @staticmethod
     def determine_action_kind(text: Optional[str]) -> Optional[str]:
@@ -144,7 +145,7 @@ class ActionKindClassifier:
         # Check starting with greeting prefix
         for g in ActionKindClassifier._GREETING_WORDS:
             if norm == g or norm.startswith(f"{g} ") or norm.endswith(f" {g}"):
-                if len(norm.split()) <= 4:
+                if len(norm.split()) <= 10 and not ActionKindClassifier.has_action_intent(text):
                     return True
         return False
 
@@ -157,6 +158,7 @@ class ActionKindClassifier:
             return True
         for g in ActionKindClassifier._GRATITUDE_WORDS:
             if norm == g or norm.startswith(f"{g} ") or norm.endswith(f" {g}"):
-                if len(norm.split()) <= 5:
+                if len(norm.split()) <= 10 and not ActionKindClassifier.has_action_intent(text):
                     return True
         return False
+
