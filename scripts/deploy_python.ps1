@@ -8,8 +8,8 @@ if (Test-Path -LiteralPath $EnvFile) {
 
 $ProjectRoot = (Get-Item $PSScriptRoot).Parent.FullName
 
-$Vm = if (![string]::IsNullOrWhiteSpace($env:DEPLOY_VM)) { $env:DEPLOY_VM } else { "luonggminh05@192.168.18.129" }
-$RemoteApp = if (![string]::IsNullOrWhiteSpace($env:DEPLOY_REMOTE_APP)) { $env:DEPLOY_REMOTE_APP } else { "/home/luonggminh05/Rag" }
+$Vm = if (![string]::IsNullOrWhiteSpace($env:DEPLOY_VM)) { $env:DEPLOY_VM } else { "user@your-server-ip" }
+$RemoteApp = if (![string]::IsNullOrWhiteSpace($env:DEPLOY_REMOTE_APP)) { $env:DEPLOY_REMOTE_APP } else { "/home/user/rag" }
 $Kubectl = "sudo KUBECONFIG=/etc/rancher/rke2/rke2.yaml /var/lib/rancher/rke2/bin/kubectl"
 $Ctr = "sudo /var/lib/rancher/rke2/bin/ctr -a /run/k3s/containerd/containerd.sock -n k8s.io"
 

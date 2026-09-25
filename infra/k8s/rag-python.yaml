@@ -24,19 +24,19 @@ spec:
             - name: TEI_URL
               value: "http://embedding-server:80"
             - name: UPRAG_LMSTUDIOENDPOINT
-              value: "http://192.168.18.129:11434/v1"
+              value: "http://ollama-service:11434/v1"
             - name: UPRAG_MODELID
               value: "qwen2.5vl:7b"
             - name: UPRAG_APIKEY
               value: "ollama"
             - name: SQLSERVER_CONNECTIONSTRING
-              value: "Driver={ODBC Driver 18 for SQL Server};Server=192.168.18.1;Database=RagVectorDb;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True;Encrypt=Optional;"
+              value: "Driver={ODBC Driver 18 for SQL Server};Server=sqlserver-service;Database=RagVectorDb;User Id=sa;Password=REPLACE_WITH_YOUR_SQL_PASSWORD;TrustServerCertificate=True;Encrypt=Optional;"
             - name: INGESTION_ENABLEOCR
               value: "true"
             - name: INGESTION_ENABLEVISIONCAPTION
               value: "true"
             - name: INGESTION_VISIONAPIURL
-              value: "http://192.168.18.129:11434/v1/chat/completions"
+              value: "http://ollama-service:11434/v1/chat/completions"
             - name: INGESTION_VISIONAPIKEY
               value: "ollama"
             - name: INGESTION_VISIONMODEL

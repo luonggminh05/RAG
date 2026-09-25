@@ -152,17 +152,22 @@ class ChatService:
         base_query = (message or "").strip()
         screenshot_descriptions: List[str] = []
         selected_model = model or getattr(settings, "llm_model_id", "qwen2.5vl:7b")
+        chat_started_emitted = False
 
         # 2. Xử lý ảnh đính kèm (nếu bật chế độ Vision)
         has_images = images and len(images) > 0
         if has_images:
             if not enable_vision:
-                yield "event: chat_started\ndata: {}\n\n"
+                if not chat_started_emitted:
+                    chat_started_emitted = True
+                    yield "event: chat_started\ndata: {}\n\n"
                 warning_msg = "*Chế độ đọc ảnh (Vision Mode) đang tắt. Bỏ qua phân tích ảnh đính kèm.*\\n\\n"
                 yield f"event: token\ndata: {json.dumps({'text': warning_msg}, ensure_ascii=False)}\n\n"
             else:
                 if len(images) > 3:
-                    yield "event: chat_started\ndata: {}\n\n"
+                    if not chat_started_emitted:
+                        chat_started_emitted = True
+                        yield "event: chat_started\ndata: {}\n\n"
                     yield "event: token\ndata: {\"text\": \"\\n[Lỗi: Chỉ gửi tối đa 3 ảnh cùng lúc]\"}\n\n"
                     yield "event: chat_ended\ndata: {}\n\n"
                     return
@@ -177,19 +182,25 @@ class ChatService:
                         raw_bytes = base64.b64decode(b64_data)
                         total_bytes += len(raw_bytes)
                         if total_bytes > 5 * 1024 * 1024:
-                            yield "event: chat_started\ndata: {}\n\n"
+                            if not chat_started_emitted:
+                                chat_started_emitted = True
+                                yield "event: chat_started\ndata: {}\n\n"
                             yield "event: token\ndata: {\"text\": \"\\n[Lỗi: Tổng dung lượng ảnh vượt quá 5MB]\"}\n\n"
                             yield "event: chat_ended\ndata: {}\n\n"
                             return
                         decoded_images.append(raw_bytes)
                     except Exception:
-                        yield "event: chat_started\ndata: {}\n\n"
+                        if not chat_started_emitted:
+                            chat_started_emitted = True
+                            yield "event: chat_started\ndata: {}\n\n"
                         yield "event: token\ndata: {\"text\": \"\\n[Lỗi: Giải mã hình ảnh base64 thất bại]\"}\n\n"
                         yield "event: chat_ended\ndata: {}\n\n"
                         return
 
                 if decoded_images:
-                    yield "event: chat_started\ndata: {}\n\n"
+                    if not chat_started_emitted:
+                        chat_started_emitted = True
+                        yield "event: chat_started\ndata: {}\n\n"
                     yield "event: thinking\ndata: {\"text\": \"Đang phân tích hình ảnh đính kèm bằng Vision Service...\\n\"}\n\n"
                     tasks = [self.vision_service.describe_screenshot(img_b, base_query) for img_b in decoded_images]
                     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -201,7 +212,9 @@ class ChatService:
             base_query = screenshot_descriptions[0]
 
         if not base_query:
-            yield "event: chat_started\ndata: {}\n\n"
+            if not chat_started_emitted:
+                chat_started_emitted = True
+                yield "event: chat_started\ndata: {}\n\n"
             yield "event: token\ndata: {\"text\": \"Bạn chưa nhập câu hỏi và không có hình ảnh hợp lệ để phân tích.\"}\n\n"
             yield "event: chat_ended\ndata: {}\n\n"
             return
@@ -209,7 +222,9 @@ class ChatService:
         # 3. Input Guardrail
         guard_res = InputGuardrail.validate(base_query)
         if not guard_res.is_safe:
-            yield "event: chat_started\ndata: {}\n\n"
+            if not chat_started_emitted:
+                chat_started_emitted = True
+                yield "event: chat_started\ndata: {}\n\n"
             yield f"event: token\ndata: {json.dumps({'text': guard_res.fallback_message or SAFE_FALLBACK_MESSAGE}, ensure_ascii=False)}\n\n"
             yield "event: chat_ended\ndata: {}\n\n"
             return
@@ -224,10 +239,19 @@ class ChatService:
                 prior_history = [m for m in all_prior if m.get("id") != edit_message_id]
                 logger.info(f"[CHAT] Handled edit for message_id={edit_message_id}, conv={conv_id_int}")
             elif is_retry and retry_message_id is not None:
-                # Xóa các tin nhắn sau mốc retry_message_id
-                self.repository.truncate_messages_after(conv_id_int, retry_message_id)
-                all_prior = self.repository.get_messages_up_to(conv_id_int, retry_message_id, limit=6)
-                prior_history = [m for m in all_prior if m.get("id") != retry_message_id]
+                target_msg = self.repository.get_message(retry_message_id)
+                if target_msg and target_msg.get("role") == "assistant":
+                    self.repository.truncate_messages_from(conv_id_int, retry_message_id)
+                    all_prior = self.repository.get_messages_up_to(conv_id_int, int(retry_message_id) - 1, limit=6)
+                    prior_history = all_prior
+                elif target_msg:
+                    self.repository.truncate_messages_after(conv_id_int, retry_message_id)
+                    all_prior = self.repository.get_messages_up_to(conv_id_int, retry_message_id, limit=6)
+                    prior_history = [m for m in all_prior if m.get("id") != retry_message_id]
+                else:
+                    self.repository.add_message(conv_id_int, "user", message or "[Hình ảnh]")
+                    all_msgs = self.repository.get_messages(conv_id_int, limit=8)
+                    prior_history = all_msgs[:-1] if all_msgs else []
                 logger.info(f"[CHAT] Handled retry for message_id={retry_message_id}, conv={conv_id_int}")
             else:
                 self.repository.add_message(conv_id_int, "user", message or "[Hình ảnh]")
@@ -244,7 +268,8 @@ class ChatService:
         intent_res = await self.intent_classifier.classify(base_query, history=prior_history)
 
         if intent_res.intent in ("chitchat", "out_of_scope"):
-            if not has_images:
+            if not chat_started_emitted:
+                chat_started_emitted = True
                 yield "event: chat_started\ndata: {}\n\n"
             ans_text = intent_res.response or "Xin chào! Tôi có thể hỗ trợ gì cho bạn?"
             async for sse_event in self._stream_text_adaptive(ans_text):
@@ -258,7 +283,8 @@ class ChatService:
             return
 
         # 6. Chuẩn bị ngữ cảnh cho Agentic RAG Graph
-        if not has_images:
+        if not chat_started_emitted:
+            chat_started_emitted = True
             yield "event: chat_started\ndata: {}\n\n"
 
         vision_ctx = "\n".join(screenshot_descriptions) if screenshot_descriptions else None
@@ -296,12 +322,10 @@ class ChatService:
             "documents": [],
             "citations": [],
             "is_relevant": False,
-            "retry_count": 0,
             "final_answer": "",
             "chat_history": prior_history,
             "vision_context": vision_ctx,
             "selected_model": selected_model,
-            "rewritten_query": None,
             "top_k": top_k,
         }
 
@@ -414,7 +438,15 @@ class ChatService:
                 await queue.put(("error", str(ex)))
 
         # Khởi chạy background worker
-        worker_task = asyncio.create_task(_run_agentic_graph())  # noqa: F841
+        worker_task = asyncio.create_task(_run_agentic_graph())
+
+        def _log_worker_exception(t: asyncio.Task) -> None:
+            if not t.cancelled():
+                exc = t.exception()
+                if exc:
+                    logger.error(f"[CHAT] Agentic worker task error: {exc}", exc_info=exc)
+
+        worker_task.add_done_callback(_log_worker_exception)
 
         # 8. Tiêu thụ Queue và phát các sự kiện SSE
         saved_citations: List[Dict[str, Any]] = []
@@ -422,7 +454,7 @@ class ChatService:
 
         try:
             while True:
-                item = await queue.get()
+                item = await asyncio.wait_for(queue.get(), timeout=120.0)
                 item_type, item_data = item[0], item[1]
 
                 if item_type == "token":
@@ -437,6 +469,10 @@ class ChatService:
                     err_display = f"\n[Lỗi xử lý từ hệ thống AI '{selected_model}': {item_data}]"
                     yield f"event: token\ndata: {json.dumps({'text': err_display}, ensure_ascii=False)}\n\n"
                     break
+        except asyncio.TimeoutError:
+            logger.error(f"[CHAT] Timeout waiting for agentic graph execution on conv={conv_id_int}")
+            err_display = "\n[Quá thời gian chờ phản hồi từ hệ thống AI. Vui lòng thử lại sau.]"
+            yield f"event: token\ndata: {json.dumps({'text': err_display}, ensure_ascii=False)}\n\n"
         except asyncio.CancelledError:
             logger.info(f"[CHAT] Client disconnected from stream conv={conv_id_int}. Background graph worker continues.")
             raise

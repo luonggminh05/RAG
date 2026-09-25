@@ -103,6 +103,7 @@ class Settings(BaseSettings):
     ingestion_max_vision_images_per_slide: int = Field(default=0, alias="INGESTION_MAXVISIONIMAGESPERSLIDE")
     ingestion_max_vision_images_per_file: int = Field(default=0, alias="INGESTION_MAXVISIONIMAGESPERFILE")
     ingestion_vision_timeout_seconds: int = Field(default=160, alias="INGESTION_VISIONTIMEOUTSECONDS")
+    ingestion_hierarchical_chunking: bool = Field(default=False, alias="INGESTION_HIERARCHICAL_CHUNKING")
 
     # --- Hybrid Search & RRF Settings ---
     search_top_k_max: int = Field(default=50, alias="SEARCH_TOPKMAX")
@@ -117,9 +118,20 @@ class Settings(BaseSettings):
     rrf_fts_weight: float = Field(default=0.4, alias="RRF_FTS_WEIGHT")
 
     # --- Reranker Settings ---
-    reranker_type: str = Field(default="disabled", alias="RERANKER_TYPE")  # disabled | flashrank
+    reranker_type: str = Field(default="disabled", alias="RERANKER_TYPE")  # disabled | flashrank | bge | cross_encoder
+    reranker_model: Optional[str] = Field(default=None, alias="RERANKER_MODEL")
     reranker_top_k: int = Field(default=5, alias="RERANKER_TOP_K")
     hybrid_top_k_candidates: int = Field(default=20, alias="HYBRID_TOP_K_CANDIDATES")
+
+    # --- RAG Dynamic Top-K & Adaptive Retrieval Settings ---
+    rag_dynamic_top_k_enabled: bool = Field(default=True, alias="RAG_DYNAMIC_TOP_K_ENABLED")
+    rag_min_top_k: int = Field(default=3, alias="RAG_MIN_TOP_K")
+    rag_max_top_k: int = Field(default=15, alias="RAG_MAX_TOP_K")
+    rag_specific_top_k: int = Field(default=3, alias="RAG_SPECIFIC_TOP_K")
+    rag_exhaustive_top_k: int = Field(default=12, alias="RAG_EXHAUSTIVE_TOP_K")
+    rag_enable_vietnamese_normalization: bool = Field(default=True, alias="RAG_ENABLE_VIETNAMESE_NORMALIZATION")
+    rag_candidate_multiplier: int = Field(default=3, alias="RAG_CANDIDATE_MULTIPLIER")
+
 
     # --- CORS Origins ---
     frontend_cors_origins: Union[List[str], str] = Field(
@@ -160,6 +172,9 @@ class Settings(BaseSettings):
         default=["Master", "Admin", "Co-Leader", "Officer", "Staff", "Raid Leader", "Elite", "Member", "Recruit"],
         alias="VALID_ROLES"
     )
+
+    # --- Agent & Chat History Settings ---
+    chat_history_window: int = Field(default=6, alias="CHAT_HISTORY_WINDOW")
 
     # --- LangSmith / Langfuse ---
     langsmith_tracing: bool = Field(default=False, alias="LANGCHAIN_TRACING_V2")

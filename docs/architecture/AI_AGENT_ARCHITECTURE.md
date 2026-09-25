@@ -1,12 +1,26 @@
-# 🤖 Hướng Dẫn Kiến Trúc & Xây Dựng AI Agent (BVBank AI System)
+# AI Agent & Intent Routing Architecture
 
-Tài liệu này hướng dẫn chi tiết về cấu trúc, nguyên lý vận hành, quy trình phân loại Intent và cách mở rộng hệ thống **Multi-Agent AI** thuộc phân hệ `app/ai`.
+> 🌐 Language: **English** | [Tiếng Việt](AI_AGENT_ARCHITECTURE_vi.md)
+
+This document provides a detailed technical reference for the **Rag Assistant** AI subsystem located under `app/ai`. It covers the system's architectural layers, the Supervisor Intent Router, the Fast Pipeline RAG graph, Dual Guardrails, Multimodal Vision processing, and the automated evaluation framework.
 
 ---
 
-## 📐 1. Tổng Quan Kiến Trúc Multi-Agent
+## Table of Contents
 
-Hệ thống được thiết kế theo mô hình **Supervisor-Worker Pattern** kết hợp với **Agentic RAG** và **Phân quyền tài liệu RBAC (Role-Based Access Control)**.
+1. [Architectural Overview](#1-architectural-overview)
+2. [Subsystem Directory Structure](#2-subsystem-directory-structure)
+3. [Supervisor Intent Router (P2.1)](#3-supervisor-intent-router-p21)
+4. [Fast Pipeline RAG Graph](#4-fast-pipeline-rag-graph)
+5. [Dual Guardrails Subsystem](#5-dual-guardrails-subsystem)
+6. [Multimodal Vision Mode](#6-multimodal-vision-mode)
+7. [Automated Evaluation Framework (Eval)](#7-automated-evaluation-framework-eval)
+
+---
+
+## 1. Architectural Overview
+
+The system combines a fast **Supervisor Intent Router** with an ultra-low-latency **Fast Pipeline RAG Graph** implemented via LangGraph, accompanied by comprehensive guardrails and RBAC access verification.
 
 ```
                     ┌──────────────────────────┐
@@ -15,170 +29,208 @@ Hệ thống được thiết kế theo mô hình **Supervisor-Worker Pattern** 
                                  │
                                  ▼
                      ┌───────────────────────┐
-                     │   SUPERVISOR AGENT    │
-                     │  (Intent Classifier)  │
+                     │    INPUT GUARDRAIL    │
+                     │  (Injection & Safety) │
                      └───────────┬───────────┘
                                  │
-          ┌───────────────────────┼───────────────────────┬───────────────────────┐
-          │ (intent: faq)         │ (intent: rag)         │ (intent: procurement) │ (intent: fallback)
-          ▼                       ▼                       ▼                       ▼
- ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
- │    FAQ AGENT    │     │  AGENTIC RAG    │     │PROCUREMENT AGENT│     │ FALLBACK HANDLER│
- │  (Quick Lookup) │     │ (Deep Document) │     │(gAMSPro ReAct)  │     │(Chitchat/Refuse)│
- └─────────────────┘     └────────┬────────┘     └─────────────────┘     └─────────────────┘
-                                 │
-                                 │
                                  ▼
-                    ┌─────────────────────────┐
-                    │  RAG RETRIEVAL SUBSYSTEM│
-                    │ (SQL Vector + RBAC Filter)│
-                    └─────────────────────────┘
+                     ┌───────────────────────┐
+                     │   SUPERVISOR ROUTER   │
+                     │ (Rule-based Fast Path │
+                     │  + Lightweight LLM)   │
+                     └───────────┬───────────┘
+                                 │
+           ┌─────────────────────┴─────────────────────┐
+           │ (intent: chitchat / out_of_scope)         │ (intent: rag)
+           ▼                                           ▼
+  ┌─────────────────┐                       ┌──────────────────────┐
+  │ DIRECT STREAMER │                       │  FAST PIPELINE RAG   │
+  │ (Instant reply  │                       │      LANGGRAPH       │
+  │  adaptive SSE)  │                       └──────────┬───────────┘
+  └─────────────────┘                                  │
+                                    ┌──────────────────┴──────────────────┐
+                                    ▼                                     ▼
+                        ┌───────────────────────┐             ┌───────────────────────┐
+                        │   retrieve_rag_node   │             │    generator_node     │
+                        │ (Hybrid Search + RRF  │ ──────────> │  (Context synthesis   │
+                        │  + Reranker + Expand) │             │  + Token streaming)   │
+                        └───────────────────────┘             └──────────┬────────────┘
+                                                                         │
+                                                                         ▼
+                                                              ┌───────────────────────┐
+                                                              │   OUTPUT GUARDRAIL    │
+                                                              │  (PII / Secret Mask)  │
+                                                              └───────────────────────┘
 ```
 
 ---
 
-## 📁 2. Cấu Trúc Thư Mục `app/ai`
+## 2. Subsystem Directory Structure
 
 ```text
 app/ai/
-├── agent/                         # Các AI Agent độc lập
-│   ├── supervisor/                # Supervisor Router Node (Phân loại Intent)
-│   │   ├── graph/                 # LangGraph / Node workflow
-│   │   ├── nodes/                 # Logic node classify_intent_node
-│   │   ├── prompts/               # System & User prompts (v1/system.md)
-│   │   ├── schemas.py             # Pydantic RouterOutput & IntentType Enum
-│   │   └── state.py               # SupervisorState Schema
+├── agent/                         # Agent workflows and intent routing
+│   ├── agentic_rag/               # LangGraph Fast Pipeline
+│   │   ├── graph/                 # StateGraph compiled workflow
+│   │   ├── nodes/                 # retrieve_rag_node and generator_node
+│   │   ├── prompts/               # Prompt registry and system templates
+│   │   ├── state.py               # AgenticRagState TypedDict definition
+│   │   └── tools/                 # Legacy tools & RBAC ContextVar helpers
 │   │
-│   ├── faq/                       # Agent xử lý quy trình nhanh / tra cứu atomic
-│   │   ├── graph/                 # Graph workflow
-│   │   ├── prompts/               # Prompt registry
-│   │   └── tools/                 # Tool tra cứu FAQ
+│   ├── faq/                       # Fast atomic lookup agent
+│   │   ├── graph/                 # StateGraph workflow
+│   │   ├── prompts/               # Prompt templates
+│   │   └── tools/                 # FAQ search tools
 │   │
-│   └── agentic_rag/               # Agent tra cứu văn bản quy chế phức tạp
-│       ├── graph/                 # ReAct / Plan-and-Execute Loop
-│       ├── prompts/               # Prompt registry
-│       └── tools/                 # Vector Retrieval Tools
+│   └── supervisor/                # Supervisor Intent Router
+│       ├── classifier.py          # Rule-based fast path + Structured LLM fallback
+│       ├── prompts/               # Router system prompts
+│       └── schemas.py             # RouterOutput and IntentType schemas
 │
-├── memory/                        # Bộ nhớ hội thoại & Rewrite Query
-│   └── conversation/
-│       └── schemas.py             # ContextualizedQuery Pydantic Model
+├── eval/                          # Automated evaluation framework
+│   ├── metrics.py                 # HitRateAtK, MRRAtK, CitationPrecision, ExactMatch
+│   ├── report.py                  # Evaluation reporting and JSON summary
+│   ├── runner.py                  # Evaluation execution engine
+│   └── scorer.py                  # Aggregation and scoring logic
 │
-├── rag/                           # Subsystem RAG & Vector Store
-│   ├── embedding/                 # TeiEmbeddingService (PyTorch GPU / TEI / Ollama)
-│   └── retrieval/                 # VectorRetriever (Lọc phân quyền RBAC)
+├── guardrails/                    # Input and Output Guardrails
+│   ├── guardrail.py               # InputGuardrail and OutputGuardrail
+│   └── schemas.py                 # GuardrailResult schemas
 │
-└── eval/                          # Khung đánh giá tự động (LLM Evaluation Framework)
-    ├── metrics.py                 # Metric chấm điểm (ExactMatch, MinValue, LLMJudge)
-    ├── report.py                  # Xuất báo cáo Rich Console & JSON Dashboard
-    ├── runner.py                  # Trình thực thi Eval Test Cases
-    └── scorer.py                  # Đánh giá & tính score tổng hợp
+├── rag/                           # Retrieval-Augmented Generation subsystem
+│   ├── chunking/                  # Hierarchical and semantic text splitters
+│   ├── citation/                  # Citation deduplication and footer formatting
+│   ├── embedding/                 # TeiEmbeddingService (BAAI/bge-m3 with LRU cache)
+│   ├── ingestion/                 # Document ingestion pipeline & OCR extraction
+│   ├── query/                     # Query contextualizer and rewriting utilities
+│   ├── reranker/                  # FlashRank, CrossEncoder, Disabled, Factory
+│   ├── retrieval/                 # Hybrid Retriever, Dynamic Top-K, Adjacent Expansion
+│   └── text/                      # VietnameseNormalizer, acronym mappings, match normalizer
+│
+└── vision/                        # Multimodal processing
+    ├── captioner.py               # Qwen-VL vision captioner
+    └── ocr.py                     # Tesseract OCR extraction
 ```
 
 ---
 
-## 🎯 3. Quy Trình Vận Hành Của Supervisor Agent (Intent Classifier)
+## 3. Supervisor Intent Router (P2.1)
 
-### 3.1. Các Phân Loại Intent (`IntentType`)
+The Supervisor Intent Router (`app/ai/agent/supervisor/classifier.py`) evaluates incoming queries before invoking heavy RAG pipelines, minimizing unnecessary vector retrieval latency.
 
-1. **`faq` (Frequently Asked Questions)**:
-   - **Mô tả**: Các câu hỏi thủ tục nguyên tử, tra cứu thông tin tĩnh đơn giản (eOffice, VPP, HR self-service, giờ làm việc, người được sửa tài liệu, xuất PDF).
-   - **Từ khóa nhận diện**: *"Làm thế nào để...", "Ở đâu...", "Mấy giờ...", "Bao nhiêu ngày...", "Ai được..."*
+### 3.1 Two-Stage Routing Architecture
 
-2. **`rag` (Business Process & Procedure Manual Retrieval)**:
-   - **Mô tả**: Truy vấn quy trình nghiệp vụ nhiều bước từ Sổ tay HDSD Dịch vụ Văn phòng / VPP / eOffice, các luồng phê duyệt cấp quản lý, điều kiện trả về, báo cáo phân bổ chi phí.
-   - **Ví dụ**: Các bước xác nhận PYC của Trưởng đơn vị, quy trình điều phối PYC, chỉnh sửa kỳ đăng ký, quy trình phê duyệt danh mục dịch vụ.
+1. **Stage 1: Rule-Based Fast Path (0ms latency)**
+   - **Chitchat Detection**: Matches greetings, thanks, compliments, or bot identity queries (e.g., "xin chào", "hello", "bạn là ai", "cảm ơn bạn"). Returns an immediate friendly response.
+   - **Out-of-Scope Patterns**: Matches common off-topic categories using regular expressions (e.g., weather forecasts, cooking recipes, sports scores, lottery, jokes). Returns an informative scope reminder.
+   - **Action & Domain Keywords**: Identifies business intent through keywords (e.g., "quy trình", "hướng dẫn", "chức năng", "thao tác", "nhập liệu") and action intent classifiers, instantly routing to `rag`.
+   - **Query Length & Multi-turn Heuristic**: Queries with 6+ words or ongoing conversation history are automatically classified as `rag`.
 
-3. **`procurement` (Procurement & Asset Operations Agent - gAMSPro)**:
-   - **Mô tả**: Các thao tác nghiệp vụ, tra cứu tờ trình, kế hoạch ngân sách, đơn đặt hàng PO và quy trình trên hệ thống gAMSPro:
-     1. *Procurement Proposals & Requests* (Tờ trình mua sắm, Phiếu yêu cầu mua sắm)
-     2. *Procurement Planning & Budget Settlement* (Kế hoạch mua sắm, Hạn mức ngân sách khả dụng)
-     3. *Purchase Orders & Delivery* (Đơn đặt hàng PO, Phiếu gọi hàng, Nhà cung cấp)
-     4. *Fixed Assets & Tools Management* (TSCĐ & CCLD)
-     5. *Real Estate, Headquarters & Capital Construction* (BĐS, Trụ sở & XDCB)
-     6. *Request Slips & Fleet Operations* (PYC Xe, PYC Công tác & Vận hành xe)
-     7. *Auto-payment & Business Proposals* (Thanh toán tự động & Tờ trình nghiệp vụ)
-     8. *Mobile Apps* (App Mobile Kiểm kê & App Phê duyệt)
-   - **Từ khóa nhận diện**: *"Tờ trình mua sắm", "Kế hoạch ngân sách", "PUR/", "Đơn hàng PO", "Phân hệ...", "Tài sản cố định", "PYCXE", "Tờ trình nghiệp vụ", "App kiểm kê", "gAMSPro", "Thẻ tài sản", "Điều chuyển TSCĐ"*.
+2. **Stage 2: Lightweight Structured Output LLM Router (< 2.0s timeout)**
+   - Activated only for short, ambiguous queries that bypass the fast-path rules.
+   - Utilizes LangChain's `with_structured_output(RouterOutput)` with a strict 2.0-second timeout:
+     ```python
+     class IntentType(str, Enum):
+         RAG = "rag"
+         CHITCHAT = "chitchat"
+         OUT_OF_SCOPE = "out_of_scope"
 
-4. **`fallback` (Out of Scope / Chitchat)**:
-   - **Mô tả**: Lời chào hỏi xã giao, câu hỏi ngoài phạm vi nghiệp vụ (thời tiết, chứng khoán, công thức nấu ăn), truy vấn mơ hồ hoặc các nỗ lực Prompt Injection.
-
----
-
-## 🔒 4. Cơ Chế Phân Quyền Tài Liệu RBAC (Security & Compliance)
-
-Mọi truy vấn RAG trong `app/ai/rag/retrieval/retriever.py` đều bắt buộc tuân thủ quy tắc phân quyền **RBAC**:
-
-- **Header Request**: Nhận chuỗi `X-User-Roles` (ví dụ: `"Officer,Elite"` hoặc `"Admin"`) từ C# Gateway.
-- **Quy Tắc SQL Vector Search (RBAC)**:
-  - Chunk hợp lệ nếu `accessScope` = `'Public'` (hoặc `NULL`).
-  - HOẶC `X-User-Roles` có chứa vai trò `'Admin'` (Toàn quyền truy cập mọi tài liệu).
-  - HOẶC `accessScope` = `'Restricted'` VÀ danh sách vai trò người dùng (`Admin`, `Elite`, `Officer`) trùng khớp với mảng `allowedRoles` lưu trong Metadata của Chunk.
+     class RouterOutput(BaseModel):
+         intent: IntentType
+         confidence: float = Field(default=0.9, ge=0.0, le=1.0)
+         reasoning: str = Field(default="")
+         rewritten_query: Optional[str] = None
+     ```
 
 ---
 
-## 🧪 5. Khung Đánh Giá Tự Động (Eval Framework)
+## 4. Fast Pipeline RAG Graph
 
-Hệ thống tích hợp công cụ đánh giá tự động tại `app/ai/eval/` và script `scripts/run_eval.py`:
+The core RAG workflow (`app/ai/agent/agentic_rag/graph/graph.py`) implements a streamlined 2-step pipeline without recursive agent loops, achieving optimal end-to-end latency (2-3 seconds).
 
-### Các Chỉ Số Đo Lường Đánh Giá (Evaluation Metrics)
-1. **Chỉ số kiểm tra test case đơn lẻ**:
-   - **`exact_field_match`**: So sánh chính xác field đầu ra (`target_agent`).
-   - **`min_value`**: Đảm bảo mức độ tin cậy `confidence >= 0.85`.
-   - **`latency`**: Kiểm tra thời gian phản hồi không quá ngưỡng (vd: 20.0s).
-   - **`tool_call_match`**: So khớp tên và tham số các công cụ (Tools) được Agent gọi so với kỳ vọng.
-
-2. **Chỉ số phân loại tổng hợp (Classification Metrics)**:
-   - **`Accuracy`**: Tỷ lệ phân loại đúng tổng thể trên toàn bộ tập test cases.
-   - **`Precision`, `Recall`, `F1-Score`**: Tính toán tự động cho từng nhóm Intent (`faq`, `rag`, `procurement`, `fallback`) và chỉ số trung bình `Macro F1`.
-   - **`Confidence Calibration`**: Đánh giá độ tin cậy của điểm Confidence Score do LLM sinh ra bằng cách so sánh **Mean Confidence của các case đoán đúng** vs **Mean Confidence của các case đoán sai** để kết luận mức độ tự tin (Well Calibrated / Overconfident / Underconfident).
-
-3. **Phân Tích Lỗi & Tự Động Hóa (Error Analysis & CI/CD Benchmark)**:
-   - **`Confusion Matrix 2D`**: Trực quan hóa ma trận nhầm lẫn 2D giữa Expected Intent vs Actual Intent để phát hiện mẫu nhầm giữa `faq <-> rag` hoặc `rag <-> procurement`.
-   - **`Misclassified Cases Log`**: Log chi tiết câu query, intent kỳ vọng, intent dự đoán và **chuỗi LLM Reasoning** giúp tinh chỉnh System Prompt / Few-shot Examples.
-   - **`Benchmark Audit Threshold`**: Kiểm tra tự động ngưỡng tối thiểu (mặc định Pass Rate $\ge 90\%$). Trả về exit status 1 để ngắt CI/CD build khi có rủi ro suy giảm chất lượng prompt (Prompt Regression).
-   - **`LangSmith LLMOps Integration`**: Tự động đồng bộ feedback, accuracy, macro F1 và traces lên dashboard LangSmith khi khai báo `LANGCHAIN_TRACING_V2=true` và `LANGCHAIN_API_KEY`.
-
-### Lệnh Chạy Eval (Poe Task)
-```bash
-# Chạy eval cho toàn bộ test cases của Supervisor Agent
-uv run poe eval supervisor
-
-# Chỉ chạy lại các test cases bị FAIL ở lần eval trước (bỏ qua các test cases đã PASS)
-uv run poe eval supervisor --failed
-# Hoặc viết gọn:
-uv run poe eval supervisor -f
-
-# Chạy eval với ngưỡng Benchmark tối thiểu (ví dụ: 90% Pass Rate)
-uv run poe eval supervisor --threshold 0.90
-
-# Chạy eval cho 1 test case cụ thể theo index (ví dụ: index 31)
-uv run poe eval supervisor 31
-
-# Chạy eval riêng cho FAQ Agent
-uv run poe eval faq
-
-# Chạy eval cho toàn bộ Agents
-uv run poe eval --all
+```mermaid
+graph LR
+    Start((Start)) --> retrieve_rag_node
+    retrieve_rag_node --> generator_node
+    generator_node --> EndNode((End))
 ```
 
+### 4.1 State Definition (`AgenticRagState`)
+
+The state schema (`app/ai/agent/agentic_rag/state.py`) strictly tracks active execution context:
+
+```python
+class AgenticRagState(TypedDict):
+    messages: Annotated[List[BaseMessage], add_messages]
+    user_query: str
+    session_id: str
+    user_roles: Optional[str]
+    user_department: Optional[str]
+    documents: List[str]
+    citations: List[Dict[str, Any]]
+    is_relevant: bool
+    final_answer: str
+    chat_history: Optional[List[Dict[str, Any]]]
+    vision_context: Optional[str]
+    selected_model: Optional[str]
+    top_k: Optional[int]
+```
+
+### 4.2 Node 1: `retrieve_rag_node`
+- Resolves user query from `user_query` or the latest human message.
+- Executes `retriever.retrieve_context()` with Dynamic Top-K and RBAC filters.
+- Safely unpacks document and citation results.
+- Returns `{ "documents": docs, "citations": citations, "is_relevant": len(docs) > 0, "user_query": user_query }`.
+
+### 4.3 Node 2: `generator_node`
+- If no documents were found or `is_relevant` is False, returns a clean fallback notification.
+- Formats retrieved chunks with indexed citation labels (`[Nguồn 1: filename, Trang X]`).
+- Appends vision description context (if present).
+- Injects multi-turn conversation history within configured window size.
+- Invokes the selected LLM (`qwen2.5:3b`, `qwen2.5vl:7b`, `deepseek-r1:7b`, or `llama3.2:3b`) with streaming enabled.
+
 ---
 
-## 🛠️ 6. Hướng Dẫn Thêm AI Agent Mới Vào Hệ Thống
+## 5. Dual Guardrails Subsystem
 
-Để thêm 1 Agent mới (ví dụ: `finance_agent`), thực hiện 4 bước sau:
+Implemented in `app/ai/guardrails/guardrail.py`:
 
-1. **Tạo thư mục Agent**:
-   ```text
-   app/ai/agent/finance/
-   ├── graph/
-   ├── prompts/v1/ (system.md, user.md)
-   ├── eval/ (config.yaml, cases/case_01.json)
-   └── tools/
-   ```
-2. **Khai báo Intent trong Enum**:
-   Thêm `FINANCE = "finance"` vào `IntentType` trong `app/ai/agent/supervisor/schemas.py`.
-3. **Cập nhật System Prompt Supervisor**:
-   Thêm định nghĩa và từ khóa phân loại `finance` vào `app/ai/agent/supervisor/prompts/v1/system.md`.
-4. **Đăng ký Entrypoint Eval**:
-   Khai báo hàm async entrypoint trong `scripts/run_eval.py` vào dictionary `_AGENT_ENTRYPOINTS`.
+### 5.1 Input Guardrail
+- Inspects input queries before any LLM processing.
+- Detects prompt injection attempts (e.g., "ignore all previous instructions", "system prompt", "jailbreak").
+- Detects toxic, abusive, or dangerous prompts.
+- Returns `is_safe=False` and a predefined fallback message if violations are found.
+
+### 5.2 Output Guardrail
+- Inspects generated responses before sending to the client.
+- Redacts leaked API keys, tokens, and personally identifiable information (PII).
+- Detects severe hallucination flags.
+
+---
+
+## 6. Multimodal Vision Mode
+
+The chat service supports interactive multimodal analysis:
+- Users can toggle Vision Mode on or off per message turn.
+- Direct clipboard pasting (`Ctrl + V`) allows users to attach screenshots into the chat input.
+- Validates base64-encoded images:
+  - Enforces a maximum of 3 images per request.
+  - Enforces a maximum total size limit of 5 MB.
+- Decoded image bytes are passed to `VisionService.describe_screenshot()` to extract textual content, UI elements, button labels, and system error dialogs, injecting them into the LLM context.
+
+---
+
+## 7. Automated Evaluation Framework (Eval)
+
+Located in `app/ai/eval/`, providing standard benchmarks to continuously validate RAG quality:
+
+- **Metrics**:
+  - `HitRate@K`: Proportion of test cases where the ground-truth document is retrieved within the top K results.
+  - `MRR@K (Mean Reciprocal Rank)`: Average reciprocal rank of the first relevant document.
+  - `CitationPrecision`: Accuracy and relevance of generated citation references.
+  - `ExactMatch`: String-level exact matching for deterministic evaluation queries.
+- **Execution Script**:
+  ```bash
+  python scripts/run_eval.py
+  ```
+- **Telemetry**: Automatically integrates with Langfuse and LangSmith when tracing variables are configured.

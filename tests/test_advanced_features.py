@@ -10,10 +10,10 @@ from app.llmops.langfuse import setup_langfuse, get_langfuse_callback_handler, l
 def test_rate_limiter_and_roles():
     limiter = RateLimiter()
     
-    # Check role resolution
-    assert resolve_role_for_rate_limit("admin,user") == "Admin"
+    # Check role resolution — 6-tier RBAC: Master > Co-Leader > Officer > Elite > Member > Recruit
+    assert resolve_role_for_rate_limit("admin,user") == "Master"   # "admin" → _MASTER_KEYWORDS
     assert resolve_role_for_rate_limit("manager") == "Elite"
-    assert resolve_role_for_rate_limit("guest") == "Officer"
+    assert resolve_role_for_rate_limit("guest") == "Recruit"       # "guest" → _RECRUIT_KEYWORDS
     
     # Check sliding window
     async def _test():

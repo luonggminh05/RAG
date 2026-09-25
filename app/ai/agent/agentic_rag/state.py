@@ -13,11 +13,9 @@ class AgenticRagState(TypedDict):
     documents: List[str]
     citations: List[Dict[str, Any]]
     is_relevant: bool
-    retry_count: int
     final_answer: str
     chat_history: Optional[List[Dict[str, Any]]]
     vision_context: Optional[str]
     selected_model: Optional[str]
-    rewritten_query: Optional[str]
     top_k: Optional[int]
 

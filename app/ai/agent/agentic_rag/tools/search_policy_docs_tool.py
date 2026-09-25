@@ -6,14 +6,6 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
-_retriever = None
-
-def _get_retriever():
-    global _retriever
-    if _retriever is None:
-        from app.routers.dependencies import get_vector_retriever
-        _retriever = get_vector_retriever()
-    return _retriever
 
 
 _user_roles_var: ContextVar[Optional[str]] = ContextVar("user_roles", default=None)
@@ -40,11 +32,17 @@ class SearchPolicyDocsInput(BaseModel):
     query: str = Field(description="Câu hỏi hoặc từ khóa tra cứu quy chế, tài liệu, HDSD")
     top_k: int = Field(default=5, description="Số lượng đoạn văn bản trả về (1-10)")
 
+# NOTE: Tool này thuộc về kiến trúc Agentic Tool-calling cũ.
+# Hiện tại hệ thống đang sử dụng Fast Pipeline 2 bước (retrieve_rag_node -> generator_node),
+# nên tool `search_policy_and_manual_docs` không được bind vào bất kỳ LLM hay Node nào trong graph.
+# Tool này được bảo lưu cho mục đích mở rộng tương lai (Agentic multi-hop retrieval).
+# Các hàm set_rbac_context / get_rbac_context ở trên vẫn đang được service.py sử dụng.
 @tool("search_policy_and_manual_docs", args_schema=SearchPolicyDocsInput)
 async def search_policy_and_manual_docs(query: str, top_k: int = 5) -> str:
     """Tìm kiếm trong kho tài liệu quy chế, chính sách nội bộ, sổ tay HDSD."""
     try:
-        retriever = _get_retriever()
+        from app.routers.dependencies import get_vector_retriever
+        retriever = get_vector_retriever()
         effective_query = query
         history = _chat_history_var.get()
         if history:
@@ -62,8 +60,10 @@ async def search_policy_and_manual_docs(query: str, top_k: int = 5) -> str:
             user_roles=_user_roles_var.get(),
             user_department=_user_department_var.get(),
         )
-        documents = result.get("documents", [[]])[0] if result.get("documents") else []
-        citations = result.get("citations", [[]])[0] if result.get("citations") else []
+        raw_docs = result.get("documents") or []
+        documents = raw_docs[0] if (raw_docs and isinstance(raw_docs[0], list)) else (raw_docs if isinstance(raw_docs, list) else [])
+        raw_cits = result.get("citations") or []
+        citations = raw_cits[0] if (raw_cits and isinstance(raw_cits[0], list)) else (raw_cits if isinstance(raw_cits, list) else [])
         return json.dumps({
             "documents": documents,
             "citations": citations,

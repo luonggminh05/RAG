@@ -256,9 +256,9 @@ class IngestionPipeline:
                 except Exception:
                     embed_span = None
 
-            t_embed_start = asyncio.get_event_loop().time()
+            t_embed_start = asyncio.get_running_loop().time()
             embeddings = await self.embedding_service.embed_texts(chunk_texts)
-            embed_duration_ms = (asyncio.get_event_loop().time() - t_embed_start) * 1000
+            embed_duration_ms = (asyncio.get_running_loop().time() - t_embed_start) * 1000
 
             if embed_span:
                 try:

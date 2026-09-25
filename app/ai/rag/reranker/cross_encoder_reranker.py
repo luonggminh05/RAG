@@ -4,7 +4,7 @@ Sử dụng `sentence_transformers.CrossEncoder` với mô hình BAAI/bge-rerank
 """
 
 import logging
-from typing import ClassVar, Dict, List, Tuple
+from typing import ClassVar
 
 from app.ai.rag.reranker.base import BaseReranker
 
@@ -17,7 +17,7 @@ class CrossEncoderReranker(BaseReranker):
     Tối ưu cho tiếng Việt và truy xuất thông tin ngữ cảnh đa ngôn ngữ.
     """
 
-    _model_cache: ClassVar[Dict[str, object]] = {}
+    _model_cache: ClassVar[dict[str, object]] = {}
 
     def __init__(self, model_name: str = "BAAI/bge-reranker-base") -> None:
         self.model_name = model_name
@@ -49,9 +49,9 @@ class CrossEncoderReranker(BaseReranker):
     def rerank_with_scores(
         self,
         query: str,
-        chunks: List[str],
+        chunks: list[str],
         top_k: int,
-    ) -> List[Tuple[int, float]]:
+    ) -> list[tuple[int, float]]:
         """
         Dự đoán điểm số liên quan giữa Query và từng Chunk.
         Trả về danh sách tuple (vị trí gốc, điểm số Cross-Encoder) đã sort giảm dần.
@@ -78,9 +78,10 @@ class CrossEncoderReranker(BaseReranker):
     def rerank(
         self,
         query: str,
-        chunks: List[str],
+        chunks: list[str],
         top_k: int,
-    ) -> List[int]:
+    ) -> list[int]:
         """Trả về danh sách indices sắp xếp giảm dần theo relevance score."""
         ranked = self.rerank_with_scores(query, chunks, top_k)
         return [idx for idx, _ in ranked]
+

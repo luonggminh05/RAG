@@ -12,37 +12,22 @@ from app.ai.agent.agentic_rag.state import AgenticRagState
 logger = logging.getLogger(__name__)
 
 
+def _get(state: Any, key: str, default: Any = None) -> Any:
+    return state.get(key, default) if isinstance(state, dict) else getattr(state, key, default)
+
+
 async def retrieve_rag_node(state: AgenticRagState) -> Dict[str, Any]:
     """
     Node 1 trong Fast Pipeline:
     Truy vấn Vector DB + Fulltext Search (RRF) kết hợp Reranker.
     """
     from app.routers.dependencies import get_vector_retriever
-    user_query = (
-        state.get("user_query", "")
-        if isinstance(state, dict)
-        else getattr(state, "user_query", "")
-    )
-    user_roles = (
-        state.get("user_roles")
-        if isinstance(state, dict)
-        else getattr(state, "user_roles", None)
-    )
-    user_department = (
-        state.get("user_department")
-        if isinstance(state, dict)
-        else getattr(state, "user_department", None)
-    )
-    messages = (
-        state.get("messages", [])
-        if isinstance(state, dict)
-        else getattr(state, "messages", [])
-    )
-    top_k = (
-        state.get("top_k")
-        if isinstance(state, dict)
-        else getattr(state, "top_k", None)
-    )
+
+    user_query = _get(state, "user_query", "")
+    user_roles = _get(state, "user_roles")
+    user_department = _get(state, "user_department")
+    messages = _get(state, "messages", [])
+    top_k = _get(state, "top_k")
 
     if not user_query and messages:
         for m in reversed(messages):
@@ -61,8 +46,21 @@ async def retrieve_rag_node(state: AgenticRagState) -> Dict[str, Any]:
             user_department=user_department,
         )
 
-        docs = results.get("documents", [[]])[0] if results.get("documents") else []
-        citations = results.get("citations", [[]])[0] if results.get("citations") else []
+        raw_docs = results.get("documents") or []
+        if raw_docs and isinstance(raw_docs[0], list):
+            docs = raw_docs[0]
+        elif isinstance(raw_docs, list):
+            docs = raw_docs
+        else:
+            docs = []
+
+        raw_cits = results.get("citations") or []
+        if raw_cits and isinstance(raw_cits[0], list):
+            citations = raw_cits[0]
+        elif isinstance(raw_cits, list):
+            citations = raw_cits
+        else:
+            citations = []
 
         logger.info(
             "[RAG FAST-PIPELINE] Tra cứu hoàn tất: %d chunks tài liệu trúng khớp sau Reranker.",

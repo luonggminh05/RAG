@@ -96,7 +96,7 @@ class ChatRepository:
             conv = db.query(Conversation).filter(Conversation.id == int_id).first()
             if conv:
                 conv.title = title
-                conv.updated_at = datetime.utcnow()
+                conv.updated_at = datetime.now(timezone.utc)
                 db.commit()
         except Exception:
             db.rollback()
@@ -111,7 +111,7 @@ class ChatRepository:
         try:
             conv = db.query(Conversation).filter(Conversation.id == int_id).first()
             if conv:
-                conv.updated_at = datetime.utcnow()
+                conv.updated_at = datetime.now(timezone.utc)
                 db.commit()
         except Exception:
             db.rollback()
@@ -155,7 +155,6 @@ class ChatRepository:
                 role=role,
                 content=content,
                 trace_id=trace_id,
-                created_at=datetime.utcnow(),
             )
             db.add(msg)
             db.commit()
@@ -268,6 +267,25 @@ class ChatRepository:
         finally:
             db.close()
 
+    def truncate_messages_from(self, conversation_id: Any, message_id: Any) -> None:
+        """Xóa tất cả tin nhắn có id >= message_id trong conversation (dùng khi retry một tin nhắn trợ lý)."""
+        conv_id = self._to_int_id(conversation_id)
+        msg_id = self._to_int_id(message_id)
+        if conv_id is None or msg_id is None:
+            return
+        db: Session = SessionLocal()
+        try:
+            db.query(ChatMessage).filter(
+                ChatMessage.conversation_id == conv_id,
+                ChatMessage.id >= msg_id,
+            ).delete(synchronize_session=False)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
     def get_messages_up_to(
         self,
         conversation_id: Any,
@@ -316,7 +334,6 @@ class ChatRepository:
                 message_id=msg_id,
                 rating=rating,
                 comment=comment,
-                created_at=datetime.utcnow(),
             )
             db.add(fb)
             db.commit()

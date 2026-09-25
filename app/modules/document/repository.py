@@ -3,15 +3,14 @@ import logging
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
-import pyodbc
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import SessionLocal, engine
 from app.modules.document.model import RagDocument, RagDocumentRole, IngestionTask
 from app.ai.rag.citation.helper import CitationHelper
-from app.shared.utils.action_classifier import ActionKindClassifier
 
 logger = logging.getLogger(__name__)
+
 
 class DocumentRepository:
     def __init__(self):
@@ -65,21 +64,17 @@ class DocumentRepository:
             """)
             if not cursor.fetchone():
                 try:
-                    cursor.execute("CREATE FULLTEXT INDEX ON Documents(Document) KEY INDEX PK__Document__3214EC07... ON RagFullTextCatalog;")
-                except Exception:
-                    # Generic create fulltext index
-                    try:
-                        cursor.execute("""
-                            DECLARE @pk_name NVARCHAR(128);
-                            SELECT @pk_name = name FROM sys.key_constraints WHERE parent_object_id = OBJECT_ID('Documents') AND type = 'PK';
-                            IF @pk_name IS NOT NULL
-                            BEGIN
-                                EXEC('CREATE FULLTEXT INDEX ON Documents(Document) KEY INDEX ' + @pk_name + ' ON RagFullTextCatalog;');
-                            END
-                        """)
-                        conn.commit()
-                    except Exception as ex:
-                        logger.warning(f"[DB] FullText Index creation warning: {ex}")
+                    cursor.execute("""
+                        DECLARE @pk_name NVARCHAR(128);
+                        SELECT @pk_name = name FROM sys.key_constraints WHERE parent_object_id = OBJECT_ID('Documents') AND type = 'PK';
+                        IF @pk_name IS NOT NULL
+                        BEGIN
+                            EXEC('CREATE FULLTEXT INDEX ON Documents(Document) KEY INDEX ' + @pk_name + ' ON RagFullTextCatalog;');
+                        END
+                    """)
+                    conn.commit()
+                except Exception as ex:
+                    logger.warning(f"[DB] FullText Index creation warning: {ex}")
 
             cursor.close()
             conn.close()
@@ -419,6 +414,102 @@ class DocumentRepository:
             cursor.close()
             conn.close()
 
+    @staticmethod
+    def _build_fts_query(query: str) -> str:
+        """
+        Chuyển đổi câu hỏi tự nhiên thành chuỗi FTS query hợp lệ cho SQL Server CONTAINSTABLE.
+
+        Quy tắc:
+        - Tách từ theo khoảng trắng, lọc stopwords ngắn (≤ 1 ký tự) và ký tự đặc biệt.
+        - Mỗi từ được bọc trong dấu ngoặc kép để tránh xung đột với toán tử FTS.
+        - Nối các từ bằng OR để tìm kiếm mở rộng (tối ưu recall).
+        - Nếu câu hỏi chứa số/mã ≥ 4 chữ số, ưu tiên thêm vào đầu truy vấn.
+        - Trả về chuỗi rỗng nếu không tạo được term nào hợp lệ (để caller bỏ qua FTS).
+        """
+        # Danh sách stopwords tiếng Việt thường gặp
+        _VI_STOPWORDS = {
+            "là", "và", "của", "có", "không", "được", "trong", "cho",
+            "một", "các", "với", "từ", "về", "tôi", "bạn", "này",
+            "đó", "đã", "sẽ", "thì", "mà", "hay", "hoặc", "nếu",
+            "hãy", "cần", "nên", "như", "vì", "khi", "ai", "gì",
+            "the", "a", "an", "is", "of", "in", "to", "for", "on",
+        }
+
+        # Ưu tiên nhận diện mã số quan trọng (≥ 4 chữ số)
+        priority_codes = re.findall(r"\b\d{4,}\b", query)
+
+        # Tách từ, loại bỏ ký tự đặc biệt
+        raw_tokens = re.split(r"[\s\-,./\\\"'()[\]{}|+*?!@#$%^&=<>:;]+", query)
+        tokens = []
+        for tok in raw_tokens:
+            tok = tok.strip()
+            if len(tok) >= 2 and tok.lower() not in _VI_STOPWORDS:
+                # Escape dấu ngoặc kép bên trong token
+                escaped = tok.replace('"', '""')
+                tokens.append(f'"{escaped}"')
+
+        # Mã số đi trước (nếu có), sau đó phần còn lại
+        priority_terms = [f'"{c}"' for c in priority_codes if len(c) >= 4]
+        all_terms = priority_terms + [t for t in tokens if t not in priority_terms]
+
+        # Loại trùng, giữ thứ tự
+        seen: set[str] = set()
+        unique_terms = []
+        for t in all_terms:
+            if t not in seen:
+                seen.add(t)
+                unique_terms.append(t)
+
+        if not unique_terms:
+            return ""
+
+        # Nối bằng OR (maximize recall; reranker / RRF sẽ lo chính xác)
+        return " OR ".join(unique_terms)
+
+    def get_adjacent_chunks(
+        self, backend_id: int | str, chunk_indices: list[int]
+    ) -> list[dict[str, Any]]:
+        """
+        Lấy các chunk liền kề (adjacent / sequence gaps) trong cùng tài liệu backend_id.
+        Giúp không bỏ sót các bước quy trình hoặc mục danh sách khi truy vấn mang tính liệt kê (exhaustive).
+        """
+        if not chunk_indices:
+            return []
+
+        min_idx = max(0, min(chunk_indices) - 1)
+        max_idx = max(chunk_indices) + 1
+
+        sql = """
+            SELECT Id, Document, Metadata
+            FROM Documents
+            WHERE (
+                JSON_VALUE(Metadata, '$.backendId') = ?
+                OR JSON_VALUE(Metadata, '$.backend_document_id') = ?
+                OR JSON_VALUE(Metadata, '$.backend_id') = ?
+            )
+            AND TRY_CAST(JSON_VALUE(Metadata, '$.chunk_index') AS INT) BETWEEN ? AND ?
+            ORDER BY TRY_CAST(JSON_VALUE(Metadata, '$.chunk_index') AS INT) ASC
+        """
+        results = []
+        conn = self._get_raw_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(sql, (str(backend_id), str(backend_id), str(backend_id), min_idx, max_idx))
+            for row in cursor.fetchall():
+                cid, doc_text, meta_json = row[0], row[1], row[2]
+                meta = json.loads(meta_json) if meta_json else {}
+                results.append({
+                    "id": str(cid),
+                    "document": str(doc_text),
+                    "metadata": meta,
+                })
+            cursor.close()
+        except Exception as ex:
+            logger.warning("[ADJACENT_CHUNKS] Could not fetch adjacent chunks: %s", ex)
+        finally:
+            conn.close()
+        return results
+
     # --- True Hybrid Search (Vector + FTS + RRF + RBAC 2 Lớp) ---
     def search(
         self,
@@ -447,7 +538,7 @@ class DocumentRepository:
                 # Admin has full access to all Public and Restricted documents
                 rbac_filter_sql = ""
             elif parsed_roles:
-                roles_json = json.dumps(parsed_roles, ensure_ascii=False)
+                roles_json = json.dumps(parsed_roles, ensure_ascii=False).replace("'", "''")
                 rbac_filter_sql = f"""
                 AND (
                     JSON_VALUE(Metadata, '$.accessScope') IS NULL 
@@ -471,6 +562,32 @@ class DocumentRepository:
                 )
                 """
 
+            # Department filter
+            dept_filter_sql = ""
+            if user_department and not is_admin:
+                clean_dept = user_department.strip().replace("'", "''")
+                dept_filter_sql = f"""
+                AND (
+                    (
+                        (JSON_VALUE(Metadata, '$.department') IS NULL OR JSON_VALUE(Metadata, '$.department') = '')
+                        AND (JSON_VALUE(Metadata, '$.owner_department') IS NULL OR JSON_VALUE(Metadata, '$.owner_department') = '')
+                    )
+                    OR LOWER(JSON_VALUE(Metadata, '$.department')) = LOWER(N'{clean_dept}')
+                    OR LOWER(JSON_VALUE(Metadata, '$.owner_department')) = LOWER(N'{clean_dept}')
+                    OR EXISTS (
+                        SELECT 1
+                        FROM STRING_SPLIT(LOWER(ISNULL(NULLIF(JSON_VALUE(Metadata, '$.owner_department'), ''), JSON_VALUE(Metadata, '$.department'))), ',')
+                        WHERE LTRIM(RTRIM(value)) = LOWER(N'{clean_dept}')
+                    )
+                )
+                """
+
+            # Content kind filter
+            content_kind_filter_sql = ""
+            if content_kind:
+                clean_kind = content_kind.strip().replace("'", "''")
+                content_kind_filter_sql = f"AND JSON_VALUE(Metadata, '$.content_kind') = N'{clean_kind}'"
+
             # Vector Search SQL
             vector_k = getattr(settings, "search_vector_candidate_count", 200)
             vector_sql = f"""
@@ -483,6 +600,8 @@ class DocumentRepository:
             FROM Documents
             WHERE 1=1
             {rbac_filter_sql}
+            {dept_filter_sql}
+            {content_kind_filter_sql}
             ORDER BY Distance ASC
             """
 
@@ -491,30 +610,29 @@ class DocumentRepository:
 
             # Full-Text Search SQL
             fts_rows = []
-            if getattr(settings, "fts_enabled", True) and query.strip():
+            fts_query_str = self._build_fts_query(query) if (getattr(settings, "fts_enabled", True) and query.strip()) else ""
+            if fts_query_str:
                 try:
-                    # Clean search query for CONTAINSTABLE
-                    clean_fts_query = re.sub(r'[^\w\s]', ' ', query).strip()
-                    words = [w for w in clean_fts_query.split() if len(w) > 1]
-                    if words:
-                        fts_expr = f'"{words[0]}*"' if len(words) == 1 else ' OR '.join(f'"{w}*"' for w in words[:6])
-                        fts_sql = f"""
-                        SELECT TOP ({vector_k})
-                            d.Id,
-                            d.Document,
-                            d.Metadata,
-                            ft.[RANK] AS FtsRank,
-                            d.ParentChunkId
-                        FROM Documents d
-                        INNER JOIN CONTAINSTABLE(Documents, Document, ?) AS ft ON d.Id = ft.[KEY]
-                        WHERE 1=1
-                        {rbac_filter_sql.replace("Metadata", "d.Metadata")}
-                        ORDER BY ft.[RANK] DESC
-                        """
-                        cursor.execute(fts_sql, fts_expr)
-                        fts_rows = cursor.fetchall()
+                    fts_sql = f"""
+                    SELECT TOP ({vector_k})
+                        d.Id,
+                        d.Document,
+                        d.Metadata,
+                        ft.[RANK] AS FtsRank,
+                        d.ParentChunkId
+                    FROM Documents d
+                    INNER JOIN CONTAINSTABLE(Documents, Document, ?) AS ft ON d.Id = ft.[KEY]
+                    WHERE 1=1
+                    {rbac_filter_sql.replace("Metadata", "d.Metadata")}
+                    {dept_filter_sql.replace("Metadata", "d.Metadata")}
+                    {content_kind_filter_sql.replace("Metadata", "d.Metadata")}
+                    ORDER BY ft.[RANK] DESC
+                    """
+                    cursor.execute(fts_sql, fts_query_str)
+                    fts_rows = cursor.fetchall()
                 except Exception as ex:
                     logger.debug(f"[FTS] Fallback or FTS not available: {ex}")
+
 
             # RRF Fusion
             rrf_k = getattr(settings, "search_rrf_constant", 60)
@@ -559,7 +677,7 @@ class DocumentRepository:
                 try:
                     placeholders = ", ".join("?" for _ in parent_ids_to_fetch)
                     parent_sql = f"SELECT Id, Document FROM Documents WHERE Id IN ({placeholders})"
-                    cursor.execute(parent_sql, *list(parent_ids_to_fetch))
+                    cursor.execute(parent_sql, list(parent_ids_to_fetch))
                     for p_row in cursor.fetchall():
                         parent_docs_map[str(p_row[0])] = str(p_row[1])
                 except Exception as ex:
@@ -612,3 +730,7 @@ class DocumentRepository:
         finally:
             cursor.close()
             conn.close()
+
+    # Backwards-compatibility alias for older code / external callers
+    search_vector_chunks = search
+

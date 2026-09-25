@@ -1,4 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def utc_now():
+    return datetime.now(timezone.utc)
 from sqlalchemy import (
     BigInteger,
     Column,
@@ -34,7 +38,7 @@ class RagDocument(Base):
     chunk_count = Column("ChunkCount", Integer, nullable=False, default=0)
     uploaded_by = Column("UploadedBy", Unicode(100), nullable=True)
     tenant_id = Column("TenantId", Integer, nullable=True)
-    creation_time = Column("CreationTime", DateTime, nullable=False, default=datetime.utcnow)
+    creation_time = Column("CreationTime", DateTime, nullable=False, default=utc_now)
     last_modification_time = Column("LastModificationTime", DateTime, nullable=True)
 
     roles = relationship("RagDocumentRole", back_populates="document", cascade="all, delete-orphan")
@@ -64,5 +68,5 @@ class IngestionTask(Base):
     progress_percent = Column("ProgressPercent", Integer, nullable=False, default=0)
     chunk_count = Column("ChunkCount", Integer, nullable=False, default=0)
     error_message = Column("ErrorMessage", UnicodeText, nullable=True)
-    created_at = Column("CreatedAt", DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column("UpdatedAt", DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column("CreatedAt", DateTime, nullable=False, default=utc_now)
+    updated_at = Column("UpdatedAt", DateTime, nullable=False, default=utc_now, onupdate=utc_now)

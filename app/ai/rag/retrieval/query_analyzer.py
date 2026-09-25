@@ -151,8 +151,7 @@ class QueryAnalyzer:
 
         # Nếu có từ khóa exhaustive -> Ưu tiên Exhaustive
         if matched_exhaustive:
-            k = max(self.exhaustive_top_k, min(self.max_top_k, 10 + len(matched_exhaustive) * 2))
-            k = max(self.min_top_k, min(self.max_top_k, k))
+            k = min(self.max_top_k, max(self.exhaustive_top_k, 10 + len(matched_exhaustive) * 2))
             reasoning = f"Phát hiện ý định liệt kê/bao quát ({', '.join(matched_exhaustive)}) -> Top-K: {k}"
             logger.info("[DYNAMIC TOP-K] Query='%s' -> EXHAUSTIVE (Top-K: %d)", query[:60], k)
             return QueryAnalysisResult(

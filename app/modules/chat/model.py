@@ -3,6 +3,7 @@ from sqlalchemy import (
     Boolean, Column, Integer, String, Text, DateTime, ForeignKey, Index, Unicode, UnicodeText
 )
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 
 from app.core.database import Base
 
@@ -17,8 +18,8 @@ class Conversation(Base):
     pinned_at = Column("PinnedAt", DateTime, nullable=True)
     title_source = Column("TitleSource", String(20), nullable=False, default="default", server_default="default")
     title = Column("Title", Unicode(255), nullable=True, default="Cuộc hội thoại mới")
-    created_at = Column("CreatedAt", DateTime, nullable=True, default=datetime.utcnow)
-    updated_at = Column("UpdatedAt", DateTime, nullable=True, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column("CreatedAt", DateTime(timezone=True), nullable=True, server_default=func.now())
+    updated_at = Column("UpdatedAt", DateTime(timezone=True), nullable=True, server_default=func.now(), onupdate=func.now())
 
     messages = relationship("ChatMessage", back_populates="conversation", cascade="all, delete-orphan")
 
@@ -36,7 +37,7 @@ class ChatMessage(Base):
     role = Column("Role", String(20), nullable=True)   # 'user' | 'assistant' | 'system'
     content = Column("Content", UnicodeText, nullable=True)
     trace_id = Column("TraceId", String(100), nullable=True)
-    created_at = Column("CreatedAt", DateTime, nullable=True, default=datetime.utcnow)
+    created_at = Column("CreatedAt", DateTime(timezone=True), nullable=True, server_default=func.now())
 
     conversation = relationship("Conversation", back_populates="messages")
 
@@ -53,7 +54,7 @@ class MessageFeedback(Base):
     )
     rating = Column("Rating", String(20), nullable=False)  # 'positive' | 'negative'
     comment = Column("Comment", UnicodeText, nullable=True)
-    created_at = Column("CreatedAt", DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column("CreatedAt", DateTime(timezone=True), nullable=False, server_default=func.now())
 
     message = relationship("ChatMessage", backref="feedbacks")
 

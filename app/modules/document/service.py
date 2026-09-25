@@ -111,13 +111,19 @@ class DocumentService:
                 file_size=file_size,
                 metadata=metadata,
             )
+            logger.info(f"[RETRY] Re-queued ingestion task={task_id} for document id={doc_id}")
+            return {
+                "status": "success",
+                "message": f"Re-queued ingestion for document ID {doc_id}.",
+                "task_id": task_id,
+            }
         else:
-            # If original file is missing, update status to Completed or Failed gracefully
-            self.repository.update_rag_document_status(doc_id, "Completed", chunk_count=doc.get("chunk_count") or 1)
-
-        logger.info(f"[RETRY] Re-queued ingestion task={task_id} for document id={doc_id}")
-        return {
-            "status": "success",
-            "message": f"Re-queued ingestion for document ID {doc_id}.",
-            "task_id": task_id,
-        }
+            err_msg = f"Original file '{file_path}' no longer exists on disk."
+            self.repository.update_rag_document_status(doc_id, "Failed", error=err_msg)
+            self.repository.update_ingestion_task(task_id, "Failed", progress_percent=0, error_message=err_msg)
+            logger.warning(f"[RETRY] Failed re-queued ingestion for document id={doc_id}: file not found")
+            return {
+                "status": "error",
+                "message": err_msg,
+                "task_id": task_id,
+            }
